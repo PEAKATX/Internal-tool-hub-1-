@@ -1,0 +1,12 @@
+#!/bin/sh
+# Blocks direct pushes to main. Enable with:
+#   git config core.hooksPath .githooks
+# This is a safety net, not real enforcement (git push --no-verify bypasses
+# it) — the actual rule is "every change goes through a PR."
+
+while read local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "Direct pushes to main are blocked. Open a PR instead."
+    exit 1
+  fi
+done
