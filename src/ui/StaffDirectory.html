@@ -1,0 +1,141 @@
+<style>
+  .sd { margin-top: 24px; }
+  .sd h2 { margin: 0 0 12px; }
+  .sd table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .sd th, .sd td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
+  .sd .inactive { color: #888; }
+  .sd .msg { margin: 8px 0; min-height: 1.2em; }
+  .sd .err { color: #b00020; }
+  .sd .ok { color: #1b6e2d; }
+  .sd form { display: grid; gap: 8px; max-width: 420px; margin: 12px 0 24px; }
+  .sd label { display: grid; gap: 2px; font-size: 13px; }
+  .sd input, .sd select, .sd button { font: inherit; padding: 6px; }
+</style>
+
+<section class="sd" id="sd-root">
+  <h2>Staff directory</h2>
+  <div class="msg" id="sd-msg"></div>
+
+  <div id="sd-add-wrap" style="display:none">
+    <details>
+      <summary>Add staff member</summary>
+      <form id="sd-form">
+        <label>Full name <input name="full_name" required></label>
+        <label>Email <input name="email" type="email" required></label>
+        <label>Role <input name="role" required></label>
+        <label>Department <select name="department" required></select></label>
+        <label>Reports to (email, optional) <input name="reports_to" type="email"></label>
+        <label>Access level <select name="access_level" required></select></label>
+        <label>Employment type <select name="employment_type" required></select></label>
+        <label>Start date <input name="start_date" type="date"></label>
+        <button type="submit" id="sd-submit">Add staff member</button>
+      </form>
+    </details>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>Name</th><th>Role</th><th>Department</th>
+        <th>Access</th><th>Status</th><th id="sd-action-head"></th>
+      </tr>
+    </thead>
+    <tbody id="sd-rows"><tr><td colspan="7">Loading…</td></tr></tbody>
+  </table>
+</section>
+
+<script>
+(function () {
+  // window.ATX_USER is set by Index.html before this partial is included.
+  var isAdmin = !!(window.ATX_USER && window.ATX_USER.accessLevel === 'Admin');
+  var msg = document.getElementById('sd-msg');
+
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function say(text, ok) {
+    msg.textContent = text || '';
+    msg.className = 'msg ' + (text ? (ok ? 'ok' : 'err') : '');
+  }
+  function fail(e) { say((e && e.message) ? e.message : String(e), false); }
+
+  function render(rows) {
+    var body = document.getElementById('sd-rows');
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="7">No records to show.</td></tr>'; return; }
+    body.innerHTML = rows.map(function (r) {
+      var inactive = r.status !== 'Active';
+      var action = '';
+      if (isAdmin && !inactive) {
+        action = '<button data-email="' + esc(r.email) + '" class="sd-deactivate">Deactivate</button>';
+      }
+      return '<tr class="' + (inactive ? 'inactive' : '') + '">' +
+        '<td>' + esc(r.staff_id) + '</td>' +
+        '<td>' + esc(r.full_name) + '<br><small>' + esc(r.email) + '</small></td>' +
+        '<td>' + esc(r.role) + '</td>' +
+        '<td>' + esc(r.department) + '</td>' +
+        '<td>' + esc(r.access_level) + '</td>' +
+        '<td>' + esc(r.status) + '</td>' +
+        '<td>' + (isAdmin ? action : '') + '</td></tr>';
+    }).join('');
+  }
+
+  function load() {
+    google.script.run.withSuccessHandler(render).withFailureHandler(fail).staffDirectoryList();
+  }
+
+  function fillSelect(name, values) {
+    var sel = document.querySelector('#sd-form [name="' + name + '"]');
+    sel.innerHTML = values.map(function (v) {
+      return '<option value="' + esc(v) + '">' + esc(v) + '</option>';
+    }).join('');
+  }
+
+  if (isAdmin) {
+    document.getElementById('sd-add-wrap').style.display = 'block';
+    document.getElementById('sd-action-head').textContent = 'Action';
+
+    google.script.run.withSuccessHandler(function (o) {
+      fillSelect('department', o.departments);
+      fillSelect('access_level', o.accessLevels);
+      fillSelect('employment_type', o.employmentTypes);
+    }).withFailureHandler(fail).staffDirectoryOptions();
+
+    document.getElementById('sd-form').addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var form = ev.target;
+      var data = {};
+      Array.prototype.forEach.call(form.elements, function (el) {
+        if (el.name) data[el.name] = el.value;
+      });
+      var btn = document.getElementById('sd-submit');
+      btn.disabled = true;
+      say('Saving…', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          btn.disabled = false;
+          form.reset();
+          say('Added ' + res.staff_id + ' (' + res.email + ').', true);
+          load();
+        })
+        .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+        .staffDirectoryAdd(data);
+    });
+
+    document.getElementById('sd-rows').addEventListener('click', function (ev) {
+      var btn = ev.target.closest('.sd-deactivate');
+      if (!btn) return;
+      var email = btn.getAttribute('data-email');
+      if (!window.confirm('Deactivate ' + email + '? They will lose access immediately.')) return;
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function () { say('Deactivated ' + email + '.', true); load(); })
+        .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+        .staffDirectoryDeactivate(email);
+    });
+  }
+
+  load();
+})();
+</script>

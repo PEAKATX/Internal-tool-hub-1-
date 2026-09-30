@@ -4,8 +4,8 @@
   <base target="_top">
   <meta charset="utf-8">
   <style>
-    body { font-family: Arial, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
-    #denied { display: none; color: #b00020; }
+    body { font-family: Arial, sans-serif; max-width: 960px; margin: 40px auto; padding: 0 16px; }
+    #denied { color: #b00020; }
   </style>
 </head>
 <body>
@@ -13,11 +13,18 @@
 
   <? if (user) { ?>
     <p>Signed in as <strong><?= user.fullName ?></strong> (<?= user.accessLevel ?>)</p>
-    <p><em>Feature modules render here — placeholder skeleton for now.</em></p>
+
+    <script>
+      // '<' is escaped so a name can never close the script tag.
+      window.ATX_USER = <?!= JSON.stringify(user).replace(/</g, '\\u003c') ?>;
+    </script>
+
+    <?!= include('ui/StaffDirectory') ?>
+
+    <!-- Task, report and attendance modules get included here as they are built. -->
   <? } else { ?>
     <p id="denied">Access denied: your Google account is not registered as an active staff member.
       Contact an admin if this is a mistake.</p>
-    <script>document.getElementById('denied').style.display = 'block';</script>
   <? } ?>
 
 </body>
