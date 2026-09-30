@@ -56,6 +56,13 @@ function seedConfig_(ss) {
     ['finance_category', 'Travel'],
     ['finance_category', 'Software'],
     ['finance_category', 'Other'],
+    ['access_level', 'Staff'],
+    ['access_level', 'Lead'],
+    ['access_level', 'Admin'],
+    ['employment_type', 'Full time'],
+    ['employment_type', 'Part time'],
+    ['employment_type', 'Volunteer'],
+    ['employment_type', 'Intern'],
     ['admin_email', 'admin@example.org']
   ];
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);

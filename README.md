@@ -24,6 +24,15 @@ clasp create --type webapp --title "ATX Dashboard (dev-<yourname>)" --rootDir ./
 This generates a `.clasp.json` (gitignored — never commit it; see
 `.clasp.json.example` for the shape).
 
+**Important:** `clasp create` also overwrites `src/appsscript.json` with
+Google's default (wrong time zone, no scopes, no `webapp` block). Restore
+the repo version straight away, then force-push it:
+
+```bash
+git restore src/appsscript.json
+clasp push -f
+```
+
 In the new Apps Script project (script.google.com), open
 **Project Settings → Script Properties** and set:
 
@@ -88,7 +97,9 @@ src/
   Utils.gs          sendMail_() (redirects in dev), withLock_(), nextId_()
   Seed.gs           dummy data for dev, refuses to run in prod
   Triggers.gs       installTriggers() + the two scheduled jobs
-  ui/Index.html     page shell
+  StaffDirectory.gs view / add / deactivate staff (Admin writes, server-checked)
+  ui/Index.html     page shell, includes the module partials
+  ui/StaffDirectory.html  staff directory UI
 ```
 
 Feature modules (`Tasks.gs`, `Reports.gs`, `Attendance.gs`, `Finance.gs`,
