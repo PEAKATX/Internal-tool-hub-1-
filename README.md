@@ -98,8 +98,10 @@ src/
   Seed.gs           dummy data for dev, refuses to run in prod
   Triggers.gs       installTriggers() + the two scheduled jobs
   StaffDirectory.gs view / add / deactivate staff (Admin writes, server-checked)
+  Tasks.gs          assign, update status, completion notes, overdue flag, emails
   ui/Index.html     page shell, includes the module partials
   ui/StaffDirectory.html  staff directory UI
+  ui/Tasks.html     my tasks, team/all-tasks board, assign form
 ```
 
 Feature modules (`Tasks.gs`, `Reports.gs`, `Attendance.gs`, `Finance.gs`,
@@ -115,3 +117,15 @@ See the comment block at the top of `Schema.gs`:
    original spec) so other tables have something to reference.
 3. Added `active` flags to Tasks/Reports/Attendance/Finance/Budget/Programmes
    for soft-delete, matching the Staff `status` pattern.
+4. Added `completion_note`, `updated_by` and `updated_at` to Tasks (the
+   Staff view asks for a completion note; Section 8 asks for a user and
+   timestamp on every record). Section 5.2 does not list them.
+5. Added a `priority` category to Config (High / Medium / Low) so the
+   priority dropdown reads from Config like every other dropdown.
+
+## After pulling a change that adds columns
+
+Run `setupSheets()` once in each environment. It adds any missing header
+columns to the end of an existing tab, never touches data, and leaves a tab
+alone (with a logged warning) if its headers were renamed or reordered.
+Then run `seedDummyData()` in dev to pick up new sample data and Config rows.

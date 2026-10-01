@@ -33,5 +33,6 @@ function sendWeeklyReportReminders() {
 
 /** Monday summary of each staff member's open/overdue tasks. */
 function sendMondayTaskSummaries() {
-  // TODO: implement once Tasks.gs exists.
+  const sent = Tasks.sendSummaries();
+  Logger.log('Monday task summaries sent: ' + sent);
 }
