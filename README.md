@@ -100,10 +100,12 @@ src/
   StaffDirectory.gs view / add / deactivate staff (Admin writes, server-checked)
   Tasks.gs          assign, update status, completion notes, overdue flag, emails
   Reports.gs        weekly report form, history (filed/missed), compliance, blockers, Friday reminder
+  Attendance.gs     check in / check out with server timestamps, history, team view
   ui/Index.html     page shell, includes the module partials
   ui/StaffDirectory.html  staff directory UI
   ui/Tasks.html     my tasks, team/all-tasks board, assign form
   ui/Reports.html   report form, my history, team compliance and blockers
+  ui/Attendance.html  check in/out card, my history, team attendance
 ```
 
 Feature modules (`Tasks.gs`, `Reports.gs`, `Attendance.gs`, `Finance.gs`,
@@ -128,6 +130,21 @@ See the comment block at the top of `Schema.gs`:
 6. Added a `report_history_weeks` category to Config (default 8): how many
    recent weeks show in a person's report history and can be filed late.
 
+7. Added a `work_mode` category to Config (Remote / Office / Field) so the
+   attendance dropdown reads from Config like every other dropdown.
+
+## How the attendance rules work
+
+- Timestamps always come from the server clock, with seconds. The browser
+  never sends a time, a date or who is checking in.
+- One row per person per day: one check-in, then one check-out. The day is
+  the calendar date in the script's time zone.
+- A check-out only closes today's row. If someone forgets, that day shows
+  "No check-out" in their history and an Admin corrects the Sheet row.
+  Overnight shifts are not supported.
+- Work mode is chosen at check-in. Staff see their own history, Leads see
+  themselves and their direct reports, Admins see everyone, for any past day.
+
 ## How the weekly report rules work
 
 - A "week ending" is a Friday. Monday to Friday belong to that Friday;
@@ -141,6 +158,11 @@ See the comment block at the top of `Schema.gs`:
   recent weeks are still accepted.
 - The blockers list uses each person's most recent report only, and ignores
   answers such as "None" or "N/A".
+
+## Testing
+
+`docs/E2E-TEST-CHECKLIST.md` is the full end-to-end checklist: login,
+routing, every module, security, data integrity, and a prod smoke test.
 
 ## After pulling a change that adds columns
 

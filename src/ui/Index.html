@@ -19,13 +19,13 @@
       window.ATX_USER = <?!= JSON.stringify(user).replace(/</g, '\\u003c') ?>;
     </script>
 
+    <?!= include('ui/Attendance') ?>
+
     <?!= include('ui/Tasks') ?>
 
     <?!= include('ui/Reports') ?>
 
     <?!= include('ui/StaffDirectory') ?>
-
-    <!-- The attendance module gets included here once it is built. -->
   <? } else { ?>
     <p id="denied">Access denied: your Google account is not registered as an active staff member.
       Contact an admin if this is a mistake.</p>
