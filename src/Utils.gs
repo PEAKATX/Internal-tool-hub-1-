@@ -10,9 +10,12 @@
  * MailApp/GmailApp directly from a feature module.
  */
 function sendMail_(toEmail, subject, body) {
+  // Outside prod, mail goes to the developer, never to the real recipient.
+  // getActiveUser() is empty inside time-driven triggers, so fall back to
+  // the script owner (effective user) rather than to the real address.
   const target = isProd_()
     ? toEmail
-    : (Session.getActiveUser().getEmail() || toEmail);
+    : (Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail());
 
   const finalSubject = isProd_() ? subject : '[DEV] ' + subject + ' (real recipient: ' + toEmail + ')';
 
@@ -45,6 +48,18 @@ function nextId_(tabName, prefix, padding) {
   const lastRow = sheet.getLastRow();
   const n = lastRow <= 1 ? 1 : lastRow; // header row = 1
   return prefix + String(n).padStart(padding, '0');
+}
+
+/**
+ * True only for a real calendar date written yyyy-MM-dd. new Date() alone
+ * is not enough: V8 quietly accepts "2026-02-31" and rolls it to March 3.
+ */
+function isIsoDate_(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s));
+  if (!m) return false;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
 }
 
 function todayIso_() {

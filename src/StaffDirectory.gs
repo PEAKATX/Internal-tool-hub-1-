@@ -81,9 +81,7 @@ const StaffDirectory = {
     if (opts.departments.indexOf(department) === -1) throw new Error('Choose a department from the list.');
     if (opts.accessLevels.indexOf(accessLevel) === -1) throw new Error('Choose an access level from the list.');
     if (opts.employmentTypes.indexOf(employmentType) === -1) throw new Error('Choose an employment type from the list.');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || isNaN(new Date(startDate).getTime())) {
-      throw new Error('Start date must be a valid date.');
-    }
+    if (!isIsoDate_(startDate)) throw new Error('Start date must be a valid date.');
 
     return withLock_(function () {
       // Read inside the lock so two admins adding at once cannot clash.

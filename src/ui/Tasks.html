@@ -1,0 +1,217 @@
+<style>
+  .tk { margin-top: 24px; }
+  .tk h2 { margin: 24px 0 8px; }
+  .tk h3 { margin: 16px 0 6px; font-size: 15px; color: #444; }
+  .tk .msg { margin: 8px 0; min-height: 1.2em; }
+  .tk .err { color: #b00020; }
+  .tk .ok { color: #1b6e2d; }
+  .tk .card { border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; margin: 8px 0; }
+  .tk .card.overdue { border-color: #b00020; background: #fff5f5; }
+  .tk .head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .tk .badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #eee; }
+  .tk .badge.late { background: #b00020; color: #fff; font-weight: bold; }
+  .tk .badge.High { background: #fde2c8; }
+  .tk .meta { font-size: 13px; color: #555; margin: 4px 0; }
+  .tk .desc { margin: 4px 0; white-space: pre-wrap; }
+  .tk .note { font-size: 13px; color: #1b6e2d; margin: 4px 0; }
+  .tk .upd { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .tk .upd input { flex: 1; min-width: 160px; }
+  .tk .filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .tk form { display: grid; gap: 8px; max-width: 420px; margin: 12px 0 24px; }
+  .tk label { display: grid; gap: 2px; font-size: 13px; }
+  .tk input, .tk select, .tk textarea, .tk button { font: inherit; padding: 6px; }
+</style>
+
+<section class="tk" id="tk-root">
+  <h2>My tasks</h2>
+  <div class="msg" id="tk-msg"></div>
+  <div id="tk-mine">Loading…</div>
+
+  <div id="tk-assign-wrap" style="display:none">
+    <details>
+      <summary>Assign a task</summary>
+      <form id="tk-form">
+        <label>Title <input name="title" required></label>
+        <label>Description (include the definition of done)
+          <textarea name="description" rows="3"></textarea></label>
+        <label>Assign to <select name="assignee_email" required></select></label>
+        <label>Department <select name="department"></select></label>
+        <label>Linked programme <select name="linked_programme"></select></label>
+        <label>Priority <select name="priority" required></select></label>
+        <label>Due date <input name="due_date" type="date" required></label>
+        <button type="submit" id="tk-submit">Assign task</button>
+      </form>
+    </details>
+  </div>
+
+  <div id="tk-board-wrap" style="display:none">
+    <h2 id="tk-board-title">Team tasks</h2>
+    <div class="filters">
+      <select id="tk-f-assignee_email"></select>
+      <select id="tk-f-department"></select>
+      <select id="tk-f-linked_programme"></select>
+      <select id="tk-f-status"></select>
+      <button type="button" id="tk-clear">Clear filters</button>
+    </div>
+    <div id="tk-board">Loading…</div>
+  </div>
+</section>
+
+<script>
+(function () {
+  // window.ATX_USER is set by Index.html before this partial is included.
+  var ME = window.ATX_USER || {};
+  var isManager = ME.accessLevel === 'Lead' || ME.accessLevel === 'Admin';
+  var opts = { statuses: [], priorities: [], departments: [], programmes: [], people: [] };
+  var msg = document.getElementById('tk-msg');
+
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function say(text, ok) {
+    msg.textContent = text || '';
+    msg.className = 'msg ' + (text ? (ok ? 'ok' : 'err') : '');
+  }
+  function fail(e) { say((e && e.message) ? e.message : String(e), false); }
+
+  function options(list, blankLabel) {
+    var html = blankLabel === undefined ? '' : '<option value="">' + esc(blankLabel) + '</option>';
+    return html + list.map(function (o) {
+      var value = typeof o === 'string' ? o : o.value;
+      var label = typeof o === 'string' ? o : o.label;
+      return '<option value="' + esc(value) + '">' + esc(label) + '</option>';
+    }).join('');
+  }
+
+  function card(t) {
+    var upd = '';
+    if (t.canUpdate) {
+      upd = '<div class="upd">' +
+        '<select class="tk-status">' + opts.statuses.map(function (s) {
+          return '<option' + (s === t.status ? ' selected' : '') + '>' + esc(s) + '</option>';
+        }).join('') + '</select>' +
+        '<input class="tk-note" placeholder="Completion note" value="' + esc(t.completion_note) + '">' +
+        '<button class="tk-save" data-id="' + esc(t.task_id) + '">Save</button></div>';
+    }
+    return '<div class="card' + (t.overdue ? ' overdue' : '') + '">' +
+      '<div class="head"><strong>' + esc(t.title) + '</strong>' +
+      '<span class="badge ' + esc(t.priority) + '">' + esc(t.priority) + '</span>' +
+      '<span class="badge">' + esc(t.status) + '</span>' +
+      (t.overdue ? '<span class="badge late">OVERDUE</span>' : '') + '</div>' +
+      '<div class="meta">' + esc(t.assignee_name) + ' · assigned by ' + esc(t.assigned_by_name) +
+      ' · due ' + esc(t.due_date) + (t.linked_programme ? ' · ' + esc(t.linked_programme) : '') + '</div>' +
+      (t.description ? '<div class="desc">' + esc(t.description) + '</div>' : '') +
+      (t.completion_note ? '<div class="note">Note: ' + esc(t.completion_note) + '</div>' : '') +
+      upd + '</div>';
+  }
+
+  // My tasks, grouped by status in the order the Config tab lists them.
+  function renderMine(rows) {
+    var el = document.getElementById('tk-mine');
+    if (!rows.length) { el.textContent = 'No tasks assigned to you.'; return; }
+    el.innerHTML = opts.statuses.map(function (status) {
+      var group = rows.filter(function (t) { return t.status === status; });
+      if (!group.length) return '';
+      return '<h3>' + esc(status) + ' (' + group.length + ')</h3>' + group.map(card).join('');
+    }).join('');
+  }
+
+  function renderBoard(rows) {
+    var el = document.getElementById('tk-board');
+    el.innerHTML = rows.length ? rows.map(card).join('') : 'No tasks match.';
+  }
+
+  function loadMine() {
+    google.script.run.withSuccessHandler(renderMine).withFailureHandler(fail)
+      .tasksList({ assignee_email: ME.email });
+  }
+
+  function currentFilters() {
+    var f = {};
+    ['assignee_email', 'department', 'linked_programme', 'status'].forEach(function (k) {
+      f[k] = document.getElementById('tk-f-' + k).value;
+    });
+    return f;
+  }
+
+  function loadBoard() {
+    google.script.run.withSuccessHandler(renderBoard).withFailureHandler(fail)
+      .tasksList(currentFilters());
+  }
+
+  function reload() { loadMine(); if (isManager) loadBoard(); }
+
+  function setupManagerUi() {
+    document.getElementById('tk-assign-wrap').style.display = 'block';
+    document.getElementById('tk-board-wrap').style.display = 'block';
+    document.getElementById('tk-board-title').textContent =
+      ME.accessLevel === 'Admin' ? 'All tasks' : 'Team tasks';
+
+    var people = opts.people.map(function (p) { return { value: p.email, label: p.name }; });
+    var progs = opts.programmes.map(function (p) { return { value: p.id, label: p.name }; });
+    var form = document.getElementById('tk-form');
+    form.elements.assignee_email.innerHTML = options(people);
+    form.elements.department.innerHTML = options(opts.departments, "Assignee's department");
+    form.elements.linked_programme.innerHTML = options(progs, 'None');
+    form.elements.priority.innerHTML = options(opts.priorities);
+
+    document.getElementById('tk-f-assignee_email').innerHTML = options(people, 'Anyone');
+    document.getElementById('tk-f-department').innerHTML = options(opts.departments, 'Any department');
+    document.getElementById('tk-f-linked_programme').innerHTML = options(progs, 'Any programme');
+    document.getElementById('tk-f-status').innerHTML = options(opts.statuses, 'Any status');
+
+    ['assignee_email', 'department', 'linked_programme', 'status'].forEach(function (k) {
+      document.getElementById('tk-f-' + k).addEventListener('change', loadBoard);
+    });
+    document.getElementById('tk-clear').addEventListener('click', function () {
+      ['assignee_email', 'department', 'linked_programme', 'status'].forEach(function (k) {
+        document.getElementById('tk-f-' + k).value = '';
+      });
+      loadBoard();
+    });
+
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var data = {};
+      Array.prototype.forEach.call(form.elements, function (el) { if (el.name) data[el.name] = el.value; });
+      var btn = document.getElementById('tk-submit');
+      btn.disabled = true;
+      say('Saving…', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          btn.disabled = false;
+          form.reset();
+          say('Created ' + res.task_id + '.' + (res.warning ? ' ' + res.warning : ''), !res.warning);
+          reload();
+        })
+        .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+        .tasksCreate(data);
+    });
+  }
+
+  // One click handler covers the save buttons in both lists.
+  document.getElementById('tk-root').addEventListener('click', function (ev) {
+    var btn = ev.target.closest('.tk-save');
+    if (!btn) return;
+    var box = btn.closest('.card');
+    var status = box.querySelector('.tk-status').value;
+    var note = box.querySelector('.tk-note').value;
+    btn.disabled = true;
+    google.script.run
+      .withSuccessHandler(function () { say('Task updated.', true); reload(); })
+      .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+      .tasksUpdate(btn.getAttribute('data-id'), status, note);
+  });
+
+  google.script.run
+    .withSuccessHandler(function (o) {
+      opts = o;
+      if (isManager) setupManagerUi();
+      reload();
+    })
+    .withFailureHandler(fail)
+    .tasksOptions();
+})();
+</script>
