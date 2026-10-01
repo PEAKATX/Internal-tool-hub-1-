@@ -1,0 +1,140 @@
+<style>
+  .at { margin-top: 24px; }
+  .at h2 { margin: 24px 0 8px; }
+  .at .msg { margin: 8px 0; min-height: 1.2em; }
+  .at .err { color: #b00020; }
+  .at .ok { color: #1b6e2d; }
+  .at .today { border: 1px solid #ddd; border-radius: 6px; padding: 12px; max-width: 520px; }
+  .at .big { font-size: 15px; margin: 0 0 10px; }
+  .at .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .at table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .at th, .at td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
+  .at .badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #eee; }
+  .at .badge.Complete, .at .badge.Checked-out { background: #d8f0dd; }
+  .at .badge.In-progress, .at .badge.Checked-in { background: #dbe8fb; }
+  .at .badge.No-check-out, .at .badge.Not-checked-in { background: #fde2c8; }
+  .at input, .at select, .at button { font: inherit; padding: 6px; }
+  .at .filters { margin: 8px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+</style>
+
+<section class="at" id="at-root">
+  <h2>Attendance</h2>
+  <div class="msg" id="at-msg"></div>
+  <div class="today" id="at-today">Loading…</div>
+
+  <h2>My attendance history</h2>
+  <div id="at-history">Loading…</div>
+
+  <div id="at-team-wrap" style="display:none">
+    <h2 id="at-team-title">Team attendance</h2>
+    <div class="filters">
+      <label>Date <input type="date" id="at-date"></label>
+      <button type="button" id="at-today-btn">Today</button>
+    </div>
+    <div id="at-team">Loading…</div>
+  </div>
+</section>
+
+<script>
+(function () {
+  // window.ATX_USER is set by Index.html before this partial is included.
+  var ME = window.ATX_USER || {};
+  var isManager = ME.accessLevel === 'Lead' || ME.accessLevel === 'Admin';
+  var msg = document.getElementById('at-msg');
+
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function say(text, ok) {
+    msg.textContent = text || '';
+    msg.className = 'msg ' + (text ? (ok ? 'ok' : 'err') : '');
+  }
+  function fail(e) { say((e && e.message) ? e.message : String(e), false); }
+  function hhmm(stamp) { return stamp ? String(stamp).slice(11, 16) : ''; }
+  function badge(text) { return '<span class="badge ' + esc(String(text).replace(/ /g, '-')) + '">' + esc(text) + '</span>'; }
+
+  // ---- today's card: one button at a time ----
+  function renderToday(t) {
+    var el = document.getElementById('at-today');
+    var head = '<p class="big"><strong>' + esc(t.date) + '</strong> · server time ' + esc(t.time) + '</p>';
+    if (t.state === 'none') {
+      el.innerHTML = head + '<div class="row"><select id="at-mode">' + t.modes.map(function (m) {
+        return '<option>' + esc(m) + '</option>';
+      }).join('') + '</select><button id="at-in">Check in</button></div>';
+      document.getElementById('at-in').addEventListener('click', function () {
+        var btn = this; btn.disabled = true;
+        google.script.run
+          .withSuccessHandler(function (r) { say('Checked in at ' + hhmm(r.check_in) + '.', true); loadAll(); })
+          .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+          .attendanceCheckIn(document.getElementById('at-mode').value);
+      });
+    } else if (t.state === 'in') {
+      el.innerHTML = head + '<p>Checked in at <strong>' + esc(hhmm(t.check_in)) + '</strong> (' + esc(t.work_mode) + ').</p>' +
+        '<button id="at-out">Check out</button>';
+      document.getElementById('at-out').addEventListener('click', function () {
+        var btn = this; btn.disabled = true;
+        google.script.run
+          .withSuccessHandler(function (r) { say('Checked out at ' + hhmm(r.check_out) + '. Time worked: ' + r.duration + '.', true); loadAll(); })
+          .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+          .attendanceCheckOut();
+      });
+    } else {
+      el.innerHTML = head + '<p>Done for today. In <strong>' + esc(hhmm(t.check_in)) + '</strong>, out <strong>' +
+        esc(hhmm(t.check_out)) + '</strong> (' + esc(t.work_mode) + ', ' + esc(t.duration) + ').</p>';
+    }
+  }
+
+  function renderHistory(rows) {
+    var el = document.getElementById('at-history');
+    if (!rows.length) { el.textContent = 'No attendance recorded yet.'; return; }
+    el.innerHTML = '<table><thead><tr><th>Date</th><th>Mode</th><th>In</th><th>Out</th><th>Time worked</th><th>Status</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + esc(r.date) + '</td><td>' + esc(r.work_mode) + '</td><td>' + esc(hhmm(r.check_in)) +
+          '</td><td>' + esc(hhmm(r.check_out)) + '</td><td>' + esc(r.duration) + '</td><td>' + badge(r.status) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function renderTeam(d) {
+    document.getElementById('at-team-title').textContent =
+      (ME.accessLevel === 'Admin' ? 'Attendance' : 'Team attendance') + ' — ' + d.date;
+    var el = document.getElementById('at-team');
+    if (!d.rows.length) { el.textContent = 'No one to show.'; return; }
+    el.innerHTML = '<p>' + d.present + ' of ' + d.total + ' checked in.</p>' +
+      '<table><thead><tr><th>Name</th><th>Department</th><th>Status</th><th>Mode</th><th>In</th><th>Out</th><th>Time worked</th></tr></thead><tbody>' +
+      d.rows.map(function (r) {
+        return '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.department) + '</td><td>' + badge(r.status) +
+          '</td><td>' + esc(r.work_mode) + '</td><td>' + esc(hhmm(r.check_in)) + '</td><td>' + esc(hhmm(r.check_out)) +
+          '</td><td>' + esc(r.duration) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function loadTeam() {
+    google.script.run.withSuccessHandler(function (d) {
+      // A good load clears a leftover error (such as "choose today or an
+      // earlier date") but never a success message like "Checked in at...".
+      if (msg.className.indexOf('err') !== -1) say('');
+      document.getElementById('at-date').value = d.date;
+      renderTeam(d);
+    }).withFailureHandler(fail).attendanceTeam(document.getElementById('at-date').value);
+  }
+
+  function loadAll() {
+    var run = google.script.run;
+    run.withSuccessHandler(renderToday).withFailureHandler(fail).attendanceToday();
+    run.withSuccessHandler(renderHistory).withFailureHandler(fail).attendanceHistory();
+    if (isManager) loadTeam();
+  }
+
+  if (isManager) {
+    document.getElementById('at-team-wrap').style.display = 'block';
+    document.getElementById('at-date').addEventListener('change', loadTeam);
+    document.getElementById('at-today-btn').addEventListener('click', function () {
+      document.getElementById('at-date').value = '';
+      loadTeam();
+    });
+  }
+  loadAll();
+})();
+</script>

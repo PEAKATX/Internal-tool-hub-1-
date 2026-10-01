@@ -21,7 +21,36 @@ function seedDummyData() {
   seedConfig_(ss);
   seedTasks_(ss);
   seedReports_(ss);
+  seedAttendance_(ss);
   Logger.log('Dummy data seeded.');
+}
+
+/**
+ * Sample attendance, relative to today:
+ *   Leo: checked in and out yesterday; checked in this morning (still in).
+ *   Sam: checked in yesterday and never checked out (shows "No check-out");
+ *        nothing today, so the check-in button is available to test.
+ * Skipped if the Attendance tab already has data.
+ */
+function seedAttendance_(ss) {
+  const sheet = ss.getSheetByName('Attendance');
+  if (sheet.getLastRow() > 1) return;
+
+  const today = Attendance.today_();
+  const yesterday = Reports.addDays_(today, -1);
+  const samples = [
+    { staff_email: 'lead@example.org', date: yesterday, check_in: yesterday + ' 09:02:11',
+      check_out: yesterday + ' 17:30:45', work_mode: 'Office' },
+    { staff_email: 'staff@example.org', date: yesterday, check_in: yesterday + ' 09:30:00',
+      check_out: '', work_mode: 'Remote' },
+    { staff_email: 'lead@example.org', date: today, check_in: today + ' 08:55:20',
+      check_out: '', work_mode: 'Office' }
+  ];
+  samples.forEach(function (s, i) {
+    s.attendance_id = 'ATT-' + String(i + 1).padStart(5, '0');
+    s.active = true;
+    Attendance.writeRow_(sheet, 2 + i, s);
+  });
 }
 
 /**
@@ -157,6 +186,9 @@ function seedConfig_(ss) {
     ['priority', 'Medium'],
     ['priority', 'Low'],
     ['report_history_weeks', '8'],
+    ['work_mode', 'Remote'],
+    ['work_mode', 'Office'],
+    ['work_mode', 'Field'],
     ['admin_email', 'admin@example.org']
   ];
 
