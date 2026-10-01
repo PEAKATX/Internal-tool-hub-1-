@@ -99,9 +99,11 @@ src/
   Triggers.gs       installTriggers() + the two scheduled jobs
   StaffDirectory.gs view / add / deactivate staff (Admin writes, server-checked)
   Tasks.gs          assign, update status, completion notes, overdue flag, emails
+  Reports.gs        weekly report form, history (filed/missed), compliance, blockers, Friday reminder
   ui/Index.html     page shell, includes the module partials
   ui/StaffDirectory.html  staff directory UI
   ui/Tasks.html     my tasks, team/all-tasks board, assign form
+  ui/Reports.html   report form, my history, team compliance and blockers
 ```
 
 Feature modules (`Tasks.gs`, `Reports.gs`, `Attendance.gs`, `Finance.gs`,
@@ -122,6 +124,23 @@ See the comment block at the top of `Schema.gs`:
    timestamp on every record). Section 5.2 does not list them.
 5. Added a `priority` category to Config (High / Medium / Low) so the
    priority dropdown reads from Config like every other dropdown.
+
+6. Added a `report_history_weeks` category to Config (default 8): how many
+   recent weeks show in a person's report history and can be filed late.
+
+## How the weekly report rules work
+
+- A "week ending" is a Friday. Monday to Friday belong to that Friday;
+  Saturday and Sunday still belong to the Friday just gone (a weekend grace
+  period). Monday starts a new week.
+- Everyone with an active Staff record is expected to report, from the first
+  Friday on or after their start date.
+- One report per person per week. Reports are never edited or deleted from
+  the app. To correct one, an Admin edits the Sheet row.
+- A week shows as Missed once its weekend has passed. Late reports for
+  recent weeks are still accepted.
+- The blockers list uses each person's most recent report only, and ignores
+  answers such as "None" or "N/A".
 
 ## After pulling a change that adds columns
 

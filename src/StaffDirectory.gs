@@ -33,10 +33,12 @@ const StaffDirectory = {
 
   /** Every Staff row as a plain object, plus its sheet row number. */
   readAll_: function () {
-    const sheet = getDb_().getSheetByName('Staff');
+    const ss = getDb_();
+    const sheet = ss.getSheetByName('Staff');
     const values = sheet.getDataRange().getValues();
     const headers = SCHEMA.Staff;
-    const tz = Session.getScriptTimeZone();
+    // A date in a cell belongs to the spreadsheet's time zone, not the script's.
+    const tz = ss.getSpreadsheetTimeZone();
     return values.slice(1).map(function (row, i) {
       const rec = { rowIndex: i + 2 };
       headers.forEach(function (name, c) {

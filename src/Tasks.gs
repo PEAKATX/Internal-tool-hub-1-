@@ -24,8 +24,11 @@ const Tasks = {
   START_STATUS: 'Not started',
   DONE_STATUS: 'Completed',
 
-  // Written as plain text so Sheets never converts them to date objects.
-  TEXT_COLUMNS_: ['due_date', 'created_date', 'completed_date', 'updated_at'],
+  // Written as plain text. Dates stay yyyy-MM-dd strings instead of turning
+  // into date objects, and free text that starts with "=" is stored as text
+  // instead of being run as a spreadsheet formula.
+  TEXT_COLUMNS_: ['title', 'description', 'due_date', 'created_date', 'completed_date',
+    'completion_note', 'updated_at'],
 
   clean_: function (v) {
     return String(v === undefined || v === null ? '' : v).trim();

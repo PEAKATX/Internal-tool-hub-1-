@@ -1,0 +1,154 @@
+<style>
+  .rp { margin-top: 24px; }
+  .rp h2 { margin: 24px 0 8px; }
+  .rp .msg { margin: 8px 0; min-height: 1.2em; }
+  .rp .err { color: #b00020; }
+  .rp .ok { color: #1b6e2d; }
+  .rp table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .rp th, .rp td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+  .rp .badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #eee; }
+  .rp .badge.Filed, .rp .badge.yes { background: #d8f0dd; }
+  .rp .badge.Missed, .rp .badge.no { background: #b00020; color: #fff; font-weight: bold; }
+  .rp .badge.Due { background: #fde2c8; }
+  .rp form { display: grid; gap: 8px; max-width: 520px; margin: 12px 0 24px; }
+  .rp label { display: grid; gap: 2px; font-size: 13px; }
+  .rp input, .rp select, .rp textarea, .rp button { font: inherit; padding: 6px; }
+  .rp .fixed { color: #555; font-size: 14px; margin: 0; }
+  .rp .detail { white-space: pre-wrap; font-size: 13px; margin: 4px 0; }
+  .rp .blocker { border-left: 3px solid #b00020; padding: 4px 10px; margin: 8px 0; }
+  .rp .blocker small { color: #555; }
+</style>
+
+<section class="rp" id="rp-root">
+  <h2>Weekly report</h2>
+  <div class="msg" id="rp-msg"></div>
+
+  <div id="rp-form-wrap">Loading…</div>
+
+  <h2>My report history</h2>
+  <div id="rp-history">Loading…</div>
+
+  <div id="rp-team-wrap" style="display:none">
+    <h2 id="rp-team-title">Team report compliance</h2>
+    <div id="rp-team">Loading…</div>
+
+    <h2>Blockers raised</h2>
+    <div id="rp-blockers">Loading…</div>
+  </div>
+</section>
+
+<script>
+(function () {
+  // window.ATX_USER is set by Index.html before this partial is included.
+  var ME = window.ATX_USER || {};
+  var isManager = ME.accessLevel === 'Lead' || ME.accessLevel === 'Admin';
+  var msg = document.getElementById('rp-msg');
+
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function say(text, ok) {
+    msg.textContent = text || '';
+    msg.className = 'msg ' + (text ? (ok ? 'ok' : 'err') : '');
+  }
+  function fail(e) { say((e && e.message) ? e.message : String(e), false); }
+
+  // ---- submission form, pre-filled from the signed-in user ----
+  function renderForm(f) {
+    var wrap = document.getElementById('rp-form-wrap');
+    if (!f.open_weeks.length) {
+      wrap.innerHTML = '<p>You are up to date. Nothing to file right now.</p>';
+      return;
+    }
+    wrap.innerHTML =
+      '<form id="rp-form">' +
+      '<p class="fixed"><strong>' + esc(f.full_name) + '</strong> · ' + esc(f.role) + ' · ' +
+        esc(f.department) + '<br>' + esc(f.email) + '</p>' +
+      '<label>Week ending <select name="week_ending" required>' +
+        f.open_weeks.map(function (w) {
+          return '<option value="' + esc(w) + '">' + esc(w) +
+            (w === f.current_week_ending ? ' (this week)' : ' (late)') + '</option>';
+        }).join('') + '</select></label>' +
+      '<label>Hours worked <input name="hours_worked" type="number" min="0" max="168" step="0.5" required></label>' +
+      '<label>Work completed <textarea name="work_completed" rows="4" required></textarea></label>' +
+      '<label>Blockers (write "None" if there are none) <textarea name="blockers" rows="2"></textarea></label>' +
+      '<label>Plan for next week <textarea name="next_week_plan" rows="3" required></textarea></label>' +
+      '<button type="submit" id="rp-submit">Submit report</button></form>';
+
+    document.getElementById('rp-form').addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var form = ev.target, data = {};
+      Array.prototype.forEach.call(form.elements, function (el) { if (el.name) data[el.name] = el.value; });
+      var btn = document.getElementById('rp-submit');
+      btn.disabled = true;
+      say('Saving…', true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          say('Report ' + res.report_id + ' filed for the week ending ' + res.week_ending + '.', true);
+          loadAll();
+        })
+        .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+        .reportsSubmit(data);
+    });
+  }
+
+  // ---- my history: filed, missed, due ----
+  function renderHistory(rows) {
+    var el = document.getElementById('rp-history');
+    if (!rows.length) { el.textContent = 'No reporting weeks yet.'; return; }
+    el.innerHTML = '<table><thead><tr><th>Week ending</th><th>Status</th><th>Hours</th><th>Filed at</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        var detail = '';
+        if (r.status === 'Filed') {
+          detail = '<details><summary>View report</summary>' +
+            '<div class="detail"><strong>Work completed</strong>\n' + esc(r.work_completed) + '</div>' +
+            '<div class="detail"><strong>Blockers</strong>\n' + esc(r.blockers || 'None') + '</div>' +
+            '<div class="detail"><strong>Plan for next week</strong>\n' + esc(r.next_week_plan) + '</div></details>';
+        }
+        return '<tr><td>' + esc(r.week_ending) + '</td>' +
+          '<td><span class="badge ' + esc(r.status) + '">' + esc(r.status) + '</span>' + detail + '</td>' +
+          '<td>' + esc(r.hours_worked) + '</td><td>' + esc(r.submitted_at) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  // ---- Lead / Admin: compliance for the current week ----
+  function renderCompliance(c) {
+    var el = document.getElementById('rp-team');
+    document.getElementById('rp-team-title').textContent =
+      (ME.accessLevel === 'Admin' ? 'Report compliance' : 'Team report compliance') +
+      ' — week ending ' + c.week_ending;
+    if (!c.rows.length) { el.textContent = 'No one to show.'; return; }
+    el.innerHTML = '<p>' + c.submitted_count + ' of ' + c.total + ' submitted.</p>' +
+      '<table><thead><tr><th>Name</th><th>Department</th><th>Status</th><th>Filed at</th></tr></thead><tbody>' +
+      c.rows.map(function (r) {
+        return '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.department) + '</td>' +
+          '<td><span class="badge ' + (r.submitted ? 'yes' : 'no') + '">' +
+            (r.submitted ? 'Submitted' : 'Not submitted') + '</span></td>' +
+          '<td>' + esc(r.submitted_at) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function renderBlockers(rows) {
+    var el = document.getElementById('rp-blockers');
+    el.innerHTML = rows.length ? rows.map(function (b) {
+      return '<div class="blocker"><strong>' + esc(b.name) + '</strong> <small>week ending ' +
+        esc(b.week_ending) + '</small><div class="detail">' + esc(b.blockers) + '</div></div>';
+    }).join('') : 'No blockers raised.';
+  }
+
+  function loadAll() {
+    var run = google.script.run;
+    run.withSuccessHandler(renderForm).withFailureHandler(fail).reportsForm();
+    run.withSuccessHandler(renderHistory).withFailureHandler(fail).reportsHistory();
+    if (isManager) {
+      run.withSuccessHandler(renderCompliance).withFailureHandler(fail).reportsCompliance();
+      run.withSuccessHandler(renderBlockers).withFailureHandler(fail).reportsBlockers();
+    }
+  }
+
+  if (isManager) document.getElementById('rp-team-wrap').style.display = 'block';
+  loadAll();
+})();
+</script>

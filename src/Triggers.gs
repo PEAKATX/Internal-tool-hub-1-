@@ -26,9 +26,8 @@ function installTriggers() {
 
 /** Friday reminder to anyone who hasn't submitted a report for the current week. */
 function sendWeeklyReportReminders() {
-  // TODO: implement once Reports.gs exists —
-  // find active Staff whose email has no Reports row for this week_ending,
-  // sendMail_() to each.
+  const sent = Reports.sendReminders();
+  Logger.log('Weekly report reminders sent: ' + sent);
 }
 
 /** Monday summary of each staff member's open/overdue tasks. */

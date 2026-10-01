@@ -20,7 +20,41 @@ function seedDummyData() {
   seedStaff_(ss);
   seedConfig_(ss);
   seedTasks_(ss);
+  seedReports_(ss);
   Logger.log('Dummy data seeded.');
+}
+
+/**
+ * Sample reports, relative to today so they stay current:
+ *   Leo filed this week and last week (no blockers).
+ *   Sam filed last week with a blocker, nothing for this week or the week
+ *   before, so his history shows one Filed, one Missed and one Due.
+ * Skipped if the Reports tab already has data.
+ */
+function seedReports_(ss) {
+  const sheet = ss.getSheetByName('Reports');
+  if (sheet.getLastRow() > 1) return;
+
+  const cur = Reports.currentWeekEnding_();
+  const prev = Reports.addDays_(cur, -7);
+  const stamp = Reports.nowStamp_();
+  const samples = [
+    { staff_email: 'lead@example.org', week_ending: prev, hours_worked: 40,
+      work_completed: 'Reviewed pull requests and planned the sprint.',
+      blockers: 'None', next_week_plan: 'Start the reporting module.' },
+    { staff_email: 'lead@example.org', week_ending: cur, hours_worked: 41,
+      work_completed: 'Shipped the staff directory.',
+      blockers: 'None', next_week_plan: 'Mentor the new intern.' },
+    { staff_email: 'staff@example.org', week_ending: prev, hours_worked: 38,
+      work_completed: 'Drafted the onboarding checklist.',
+      blockers: 'Waiting on access to the shared drive.', next_week_plan: 'Finish the checklist.' }
+  ];
+  samples.forEach(function (s, i) {
+    s.report_id = 'RPT-' + String(i + 1).padStart(4, '0');
+    s.submitted_at = stamp;
+    s.active = true;
+    Reports.writeRow_(sheet, 2 + i, s);
+  });
 }
 
 /** Today plus/minus n days, as yyyy-MM-dd in the script's time zone. */
@@ -122,6 +156,7 @@ function seedConfig_(ss) {
     ['priority', 'High'],
     ['priority', 'Medium'],
     ['priority', 'Low'],
+    ['report_history_weeks', '8'],
     ['admin_email', 'admin@example.org']
   ];
 
