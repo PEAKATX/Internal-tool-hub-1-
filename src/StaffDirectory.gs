@@ -113,8 +113,8 @@ const StaffDirectory = {
         department: department, reports_to: reportsTo, access_level: accessLevel,
         employment_type: employmentType, start_date: startDate, status: 'Active'
       };
-      const row = SCHEMA.Staff.map(function (name) { return record[name]; });
-      getDb_().getSheetByName('Staff').appendRow(row);
+      const staffSheet = getDb_().getSheetByName('Staff');
+      writeRowSafe_(staffSheet, staffSheet.getLastRow() + 1, SCHEMA.Staff, record);
       return { staff_id: staffId, email: email };
     });
   },

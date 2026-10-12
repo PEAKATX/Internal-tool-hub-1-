@@ -234,12 +234,7 @@ const Reports = {
 
   /** Writes a whole new row, keeping text columns as plain text. */
   writeRow_: function (sheet, rowNumber, record) {
-    const cols = columnMap_('Reports');
-    Reports.TEXT_COLUMNS_.forEach(function (name) {
-      sheet.getRange(rowNumber, cols[name]).setNumberFormat('@');
-    });
-    const row = SCHEMA.Reports.map(function (name) { return record[name]; });
-    sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
+    writeRowSafe_(sheet, rowNumber, SCHEMA.Reports, record);
   },
 
   // ---- Lead and Admin views ----

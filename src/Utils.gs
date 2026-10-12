@@ -65,3 +65,39 @@ function isIsoDate_(s) {
 function todayIso_() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
+
+/**
+ * Writes a value into one cell so that text stays text. setValue() and
+ * setValues() evaluate a string that starts with "=" as a formula even in a
+ * cell formatted as plain text (tested in Sheets: "=1+1" became 2). Rich text
+ * is never evaluated, so every string goes through it. Numbers and booleans
+ * are written normally. Use this for any value a person can type.
+ */
+function setCellSafe_(range, value) {
+  if (typeof value === 'string') {
+    range.setNumberFormat('@');
+    range.setRichTextValue(SpreadsheetApp.newRichTextValue().setText(value).build());
+  } else {
+    range.setValue(value === undefined ? '' : value);
+  }
+}
+
+/**
+ * Writes one whole row, in header order, with every string stored as
+ * literal text (see setCellSafe_). `record` is keyed by column name.
+ */
+function writeRowSafe_(sheet, rowNumber, headers, record) {
+  const plain = headers.map(function (name) {
+    const v = record[name];
+    return (typeof v === 'string' || v === undefined || v === null) ? '' : v;
+  });
+  sheet.getRange(rowNumber, 1, 1, headers.length).setValues([plain]);
+  headers.forEach(function (name, i) {
+    const v = record[name];
+    if (typeof v === 'string' && v !== '') {
+      setCellSafe_(sheet.getRange(rowNumber, i + 1), v);
+    } else if (typeof v === 'string') {
+      sheet.getRange(rowNumber, i + 1).setNumberFormat('@');
+    }
+  });
+}
