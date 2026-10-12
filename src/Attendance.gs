@@ -112,12 +112,7 @@ const Attendance = {
 
   /** Writes a whole new row, keeping date and time columns as plain text. */
   writeRow_: function (sheet, rowNumber, record) {
-    const cols = columnMap_('Attendance');
-    Attendance.TEXT_COLUMNS_.forEach(function (name) {
-      sheet.getRange(rowNumber, cols[name]).setNumberFormat('@');
-    });
-    const row = SCHEMA.Attendance.map(function (name) { return record[name]; });
-    sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
+    writeRowSafe_(sheet, rowNumber, SCHEMA.Attendance, record);
   },
 
   // ---- the signed-in person ----
@@ -182,8 +177,7 @@ const Attendance = {
 
       const cell = getDb_().getSheetByName('Attendance')
         .getRange(rec.rowIndex, columnMap_('Attendance').check_out);
-      cell.setNumberFormat('@');
-      cell.setValue(now);
+      setCellSafe_(cell, now);
       return { check_out: now, duration: Attendance.durationText_(rec.check_in, now) };
     });
   },

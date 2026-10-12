@@ -41,6 +41,8 @@ Lead, manages Sam), `staff@example.org` (Sam, Staff).
 - [ ] Table shows all staff, including inactive ones (greyed)
 - [ ] Add a person (fake email, any department): appears as the next `ATX-` id
       with status Active; Sheet row matches what you typed
+- [ ] Add a person whose full name is `=1+1`: the Sheet shows the text `=1+1`,
+      not `2`. Deactivate that person afterwards
 - [ ] Add the same email again: rejected ("already exists")
 - [ ] Deactivate the new person: status Inactive, Sheet shows `Inactive`, row kept
 - [ ] Try to deactivate yourself: rejected
@@ -63,7 +65,8 @@ Lead, manages Sam), `staff@example.org` (Sam, Staff).
 - [ ] Sheet row: `status` = Completed, `completed_date` = today,
       `completion_note` set, `updated_by` = `staff@example.org`
 - [ ] Reopen it (In progress): `completed_date` clears, the note stays
-- [ ] Type `=1+1` in a completion note: the Sheet shows the text `=1+1`, not `2`
+- [ ] Type `=1+1` in a completion note: the Sheet shows the text `=1+1`, not `2`.
+      Click the cell: the formula bar must also read `=1+1` with no live formula
 
 **As Admin**
 - [ ] "All tasks" board shows every task; filters by person, department,
@@ -84,6 +87,8 @@ Lead, manages Sam), `staff@example.org` (Sam, Staff).
 - [ ] File an older Missed week late: allowed; it turns Filed
 - [ ] Sheet row: `staff_email` is Sam's (not typed by you), `submitted_at`
       stamped, `hours_worked` is a number
+- [ ] Put `=1+1` in the Blockers box of a report: the Sheet shows the text
+      `=1+1`, not `2`
 
 **As Lead**
 - [ ] Compliance table: "x of 2 submitted" for Leo and Sam only
@@ -126,8 +131,9 @@ Lead, manages Sam), `staff@example.org` (Sam, Staff).
 
 ## 7. Data integrity
 
-- [ ] No Sheet cell in Tasks, Reports or Attendance turned a date or text into
-      a formula or a different format
+- [ ] No Sheet cell in Tasks, Reports, Attendance or Staff turned a date or text
+      into a formula or a different format. Click any cell that starts with `=`:
+      its formula bar must show the text with no live formula
 - [ ] Ids are unique and sequential in each tab (`TSK-`, `RPT-`, `ATT-`, `ATX-`)
 - [ ] Nothing was deleted from the Sheet by the app: deactivations and
       reopenings only changed status cells

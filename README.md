@@ -164,6 +164,13 @@ See the comment block at the top of `Schema.gs`:
 `docs/E2E-TEST-CHECKLIST.md` is the full end-to-end checklist: login,
 routing, every module, security, data integrity, and a prod smoke test.
 
+## Writing text to the Sheet
+
+Never write user-typed text with `setValue`, `setValues` or `appendRow`:
+Sheets evaluates a string that starts with `=` as a formula even in a cell
+formatted as plain text. Use `setCellSafe_()` and `writeRowSafe_()` in
+`Utils.gs`, which store every string as rich text so it stays literal.
+
 ## After pulling a change that adds columns
 
 Run `setupSheets()` once in each environment. It adds any missing header

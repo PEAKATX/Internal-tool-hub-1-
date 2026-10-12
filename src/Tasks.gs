@@ -233,12 +233,7 @@ const Tasks = {
 
   /** Writes a whole new row, keeping date columns as plain text. */
   writeRow_: function (sheet, rowNumber, record) {
-    const cols = columnMap_('Tasks');
-    Tasks.TEXT_COLUMNS_.forEach(function (name) {
-      sheet.getRange(rowNumber, cols[name]).setNumberFormat('@');
-    });
-    const row = SCHEMA.Tasks.map(function (name) { return record[name]; });
-    sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
+    writeRowSafe_(sheet, rowNumber, SCHEMA.Tasks, record);
   },
 
   notifyAssigned_: function (task, assigner, person) {
@@ -293,8 +288,7 @@ const Tasks = {
       };
       Object.keys(changes).forEach(function (name) {
         const cell = sheet.getRange(task.rowIndex, cols[name]);
-        if (Tasks.TEXT_COLUMNS_.indexOf(name) !== -1) cell.setNumberFormat('@');
-        cell.setValue(changes[name]);
+        setCellSafe_(cell, changes[name]);
       });
       return { task_id: taskId, status: status, completed_date: completedDate };
     });
