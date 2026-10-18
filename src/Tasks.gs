@@ -71,9 +71,9 @@ const Tasks = {
       });
   },
 
-  /** Active staff the caller may assign tasks to or filter by. Staff get none. */
+  /** Active staff the caller may assign tasks to or filter by. Only Leads and Admins get any. */
   people_: function (user) {
-    if (user.accessLevel === 'Staff') return [];
+    if (user.accessLevel !== 'Lead' && user.accessLevel !== 'Admin') return [];
     const visible = visibleStaffEmails_(user); // null = Admin, everyone
     return StaffDirectory.readAll_()
       .filter(function (s) {

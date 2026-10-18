@@ -1,0 +1,365 @@
+<style>
+  .fn { margin-top: 24px; }
+  .fn h2 { margin: 24px 0 8px; }
+  .fn h3 { margin: 16px 0 6px; font-size: 15px; color: #444; }
+  .fn .msg { margin: 8px 0; min-height: 1.2em; }
+  .fn .err { color: #b00020; }
+  .fn .ok { color: #1b6e2d; }
+  .fn .scroll { overflow-x: auto; }
+  .fn table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px; }
+  .fn th, .fn td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+  .fn td.num, .fn th.num { text-align: right; white-space: nowrap; }
+  .fn .badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #eee; }
+  .fn .badge.Pending { background: #fde2c8; }
+  .fn .badge.Approved { background: #d8f0dd; }
+  .fn .badge.Rejected { background: #f6d3d3; }
+  .fn .badge.Reversal { background: #dbe8fb; }
+  .fn .card { border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; margin: 8px 0; }
+  .fn .head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .fn .meta { font-size: 13px; color: #555; margin: 4px 0; }
+  .fn .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .fn .row input { flex: 1; min-width: 160px; }
+  .fn .note { font-size: 13px; color: #555; margin-top: 2px; }
+  .fn .warn { color: #8a4b00; font-size: 13px; margin: 2px 0; }
+  .fn .filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .fn form { display: grid; gap: 8px; max-width: 420px; margin: 12px 0 24px; }
+  .fn label { display: grid; gap: 2px; font-size: 13px; }
+  .fn input, .fn select, .fn textarea, .fn button { font: inherit; padding: 6px; }
+  .fn input[readonly] { background: #f3f3f3; }
+</style>
+
+<section class="fn" id="fn-root">
+  <h2>Expenses</h2>
+  <div class="msg" id="fn-msg"></div>
+
+  <details>
+    <summary>Submit an expense</summary>
+    <form id="fn-form">
+      <label id="fn-direction-wrap" style="display:none">Type <select name="direction"></select></label>
+      <label>Date <input name="date" type="date" required></label>
+      <label>Category <select name="category" required></select></label>
+      <label>Budget line <select name="budget_line" required></select></label>
+      <label>Currency <input name="currency" readonly required></label>
+      <label>Amount <input name="amount" type="number" min="0.01" step="0.01" required></label>
+      <label>Description <textarea name="description" rows="2" maxlength="500" required></textarea></label>
+      <label>Receipt (PDF, PNG or JPEG, up to <span id="fn-maxmb">5</span> MB)
+        <input name="receipt" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></label>
+      <button type="submit" id="fn-submit">Submit</button>
+    </form>
+  </details>
+
+  <h3>My expenses</h3>
+  <div id="fn-mine">Loading…</div>
+
+  <div id="fn-queue-wrap" style="display:none">
+    <h2>Expenses awaiting approval</h2>
+    <div id="fn-queue">Loading…</div>
+  </div>
+
+  <div id="fn-all-wrap" style="display:none">
+    <h2>All transactions</h2>
+    <div class="filters">
+      <select id="fn-f-status"></select>
+      <select id="fn-f-budget_line"></select>
+      <select id="fn-f-direction"></select>
+      <button type="button" id="fn-clear">Clear filters</button>
+    </div>
+    <div id="fn-all">Loading…</div>
+  </div>
+
+  <div id="fn-dash-wrap" style="display:none">
+    <h2>Budget dashboard</h2>
+    <div class="row"><button type="button" id="fn-recalc" style="display:none">Recalculate budget</button></div>
+    <div id="fn-dash">Loading…</div>
+  </div>
+</section>
+
+<script>
+(function () {
+  // window.ATX_USER is set by Index.html before this partial is included.
+  var ME = window.ATX_USER || {};
+  var opts = { budgetLines: [], categories: [], currencies: [], directions: [], canSeeAll: false, isAdmin: false, maxReceiptMb: 5, today: '' };
+  var msg = document.getElementById('fn-msg');
+
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function say(text, ok) {
+    msg.textContent = text || '';
+    msg.className = 'msg ' + (text ? (ok ? 'ok' : 'err') : '');
+  }
+  function fail(e) { say((e && e.message) ? e.message : String(e), false); }
+  function money(n) {
+    if (n === null || n === undefined || n === '') return '—';
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function pct(n) { return n === null || n === undefined ? '—' : (n * 100).toFixed(1) + '%'; }
+  function options(list, blankLabel) {
+    var html = blankLabel === undefined ? '' : '<option value="">' + esc(blankLabel) + '</option>';
+    return html + list.map(function (o) {
+      var value = typeof o === 'string' ? o : o.value;
+      var label = typeof o === 'string' ? o : o.label;
+      return '<option value="' + esc(value) + '">' + esc(label) + '</option>';
+    }).join('');
+  }
+  function receiptLink(r) {
+    return r.receipt_link && r.receipt_link.indexOf('https://') === 0
+      ? '<a href="' + esc(r.receipt_link) + '" target="_blank" rel="noopener">Receipt</a>' : '';
+  }
+  function statusBadge(r) {
+    return '<span class="badge ' + esc(r.status) + '">' + esc(r.status) + '</span>' +
+      (r.reversal_of ? ' <span class="badge Reversal">Reversal of ' + esc(r.reversal_of) + '</span>' : '') +
+      (r.reversed ? ' <span class="badge Reversal">Reversed</span>' : '');
+  }
+
+  // ---- my expenses ----
+  function renderMine(rows) {
+    var el = document.getElementById('fn-mine');
+    if (!rows.length) { el.textContent = 'You have not submitted any expenses.'; return; }
+    el.innerHTML = '<div class="scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Budget line</th>' +
+      '<th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + esc(r.date) + '</td><td>' + esc(r.description) +
+          (r.decision_note ? '<div class="note">Note: ' + esc(r.decision_note) + '</div>' : '') + '</td><td>' +
+          esc(r.budget_line) + '</td><td class="num">' + money(r.amount) + ' ' + esc(r.currency) + '</td><td>' +
+          statusBadge(r) + '</td><td>' + receiptLink(r) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  function loadMine() {
+    google.script.run.withSuccessHandler(renderMine).withFailureHandler(fail).financeMine();
+  }
+
+  // ---- approval queue (Admin) ----
+  function renderQueue(res) {
+    var el = document.getElementById('fn-queue');
+    var rows = res.rows.slice().reverse(); // oldest first
+    if (!rows.length) { el.textContent = 'Nothing is waiting for approval.'; return; }
+    el.innerHTML = rows.map(function (r) {
+      var own = r.submitted_by === ME.email;
+      return '<div class="card" data-id="' + esc(r.transaction_id) + '">' +
+        '<div class="head"><strong>' + esc(r.transaction_id) + '</strong> ' + esc(r.description) +
+        ' <span class="badge Pending">Pending</span></div>' +
+        '<div class="meta">' + esc(r.submitted_by_name) + ' · ' + esc(r.date) + ' · ' + esc(r.direction) + ' · ' +
+        esc(r.category) + ' · ' + esc(r.budget_line) + ' · <strong>' + money(r.amount) + ' ' + esc(r.currency) +
+        '</strong> ' + receiptLink(r) + '</div>' +
+        (own ? '<div class="warn">Your own submission: another Admin has to decide it.</div>' :
+          '<div class="row"><input class="fn-note" placeholder="Note (required to reject)" maxlength="300">' +
+          '<button class="fn-approve">Approve</button><button class="fn-reject">Reject</button></div>') +
+        '</div>';
+    }).join('');
+  }
+  function loadQueue() {
+    google.script.run.withSuccessHandler(renderQueue).withFailureHandler(fail)
+      .financeTransactions({ status: 'Pending' });
+  }
+
+  // ---- all transactions (Finance and Admin) ----
+  function renderAll(res) {
+    var el = document.getElementById('fn-all');
+    if (!res.rows.length) { el.textContent = 'No transactions match.'; return; }
+    var more = res.total > res.rows.length ? '<p class="note">Showing the newest ' + res.rows.length + ' of ' + res.total + '.</p>' : '';
+    el.innerHTML = more + '<div class="scroll"><table><thead><tr><th>Id</th><th>Date</th><th>Type</th><th>Description</th>' +
+      '<th>Budget line</th><th class="num">Amount</th><th>Submitted by</th><th>Status</th><th></th></tr></thead><tbody>' +
+      res.rows.map(function (r) {
+        var action = '';
+        if (opts.isAdmin && r.status === 'Approved' && !r.reversal_of && !r.reversed) {
+          action = '<div class="row"><input class="fn-rev-reason" placeholder="Reason" maxlength="300">' +
+            '<button class="fn-rev" data-id="' + esc(r.transaction_id) + '">Reverse</button></div>';
+        }
+        return '<tr><td>' + esc(r.transaction_id) + '</td><td>' + esc(r.date) + '</td><td>' + esc(r.direction) +
+          '</td><td>' + esc(r.description) + (r.decision_note ? '<div class="note">Note: ' + esc(r.decision_note) + '</div>' : '') +
+          '</td><td>' + esc(r.budget_line) + '</td><td class="num">' + money(r.amount) + ' ' + esc(r.currency) +
+          '</td><td>' + esc(r.submitted_by_name) + '</td><td>' + statusBadge(r) + '</td><td>' + receiptLink(r) + action + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  function currentFilters() {
+    var f = {};
+    ['status', 'budget_line', 'direction'].forEach(function (k) { f[k] = document.getElementById('fn-f-' + k).value; });
+    return f;
+  }
+  function loadAll() {
+    google.script.run.withSuccessHandler(renderAll).withFailureHandler(fail).financeTransactions(currentFilters());
+  }
+
+  // ---- dashboard (Finance and Admin) ----
+  function renderDash(d) {
+    var el = document.getElementById('fn-dash');
+    var warnings = [];
+    d.lines.forEach(function (l) { l.warnings.forEach(function (w) { warnings.push(l.budget_line + ': ' + w); }); });
+    if (d.unmatched.length) warnings.push('Transactions with an unknown budget line: ' + d.unmatched.join(', '));
+    var warnHtml = warnings.map(function (w) { return '<div class="warn">' + esc(w) + '</div>'; }).join('');
+
+    var lines = d.lines.length ? '<h3>By budget line</h3><div class="scroll"><table><thead><tr><th>Budget line</th><th>Grant</th>' +
+      '<th class="num">Allocated</th><th class="num">Spent</th><th class="num">Remaining</th><th class="num">Left</th>' +
+      '<th class="num">Burn rate / month</th><th class="num">Remaining / month</th><th class="num">Pending</th><th>Months</th></tr></thead><tbody>' +
+      d.lines.map(function (l) {
+        return '<tr><td>' + esc(l.budget_line) + '</td><td>' + esc(l.grant_source) + '</td><td class="num">' + money(l.allocated) +
+          ' ' + esc(l.currency) + '</td><td class="num">' + money(l.spent) + '</td><td class="num">' + money(l.remaining) +
+          '</td><td class="num">' + pct(l.remaining_pct) + '</td><td class="num">' + money(l.burn_rate) +
+          '</td><td class="num">' + money(l.remaining_per_month) + '</td><td class="num">' + money(l.pending) + '</td><td>' +
+          (l.months_total === null ? '—' : l.months_elapsed + ' of ' + l.months_total) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<p>No budget lines yet.</p>';
+
+    var grants = d.grants.length ? '<h3>By grant</h3><div class="scroll"><table><thead><tr><th>Grant</th>' +
+      '<th class="num">Allocated</th><th class="num">Spent</th><th class="num">Remaining</th>' +
+      '<th class="num">Burn rate / month</th><th class="num">Funds received</th></tr></thead><tbody>' +
+      d.grants.map(function (g) {
+        return '<tr><td>' + esc(g.grant_source) + '</td><td class="num">' + money(g.allocated) + ' ' + esc(g.currency) +
+          '</td><td class="num">' + money(g.spent) + '</td><td class="num">' + money(g.remaining) +
+          '</td><td class="num">' + money(g.burn_rate) + '</td><td class="num">' + money(g.funds_received) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '';
+
+    el.innerHTML = warnHtml + lines + grants +
+      '<p class="note">Figures are for ' + esc(d.today) + '. Burn rate is spent divided by months elapsed. ' +
+      'Only approved expenditure counts as spent.</p>';
+  }
+  function loadDash() {
+    google.script.run.withSuccessHandler(renderDash).withFailureHandler(fail).financeDashboard();
+  }
+
+  function reloadAll() {
+    loadMine();
+    if (opts.canSeeAll) { loadAll(); loadDash(); }
+    if (opts.isAdmin) loadQueue();
+  }
+
+  // ---- the submit form ----
+  var form = document.getElementById('fn-form');
+
+  function syncCurrency() {
+    var name = form.elements.budget_line.value;
+    var line = opts.budgetLines.filter(function (b) { return b.name === name; })[0];
+    form.elements.currency.value = line ? line.currency : '';
+  }
+
+  function readReceipt(file, done) {
+    if (!file) { done(null); return; }
+    if (file.size > opts.maxReceiptMb * 1024 * 1024) {
+      fail(new Error('The receipt is larger than ' + opts.maxReceiptMb + ' MB.')); done(false); return;
+    }
+    var type = file.type;
+    if (!type) {
+      var ext = (file.name.split('.').pop() || '').toLowerCase();
+      type = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' }[ext] || '';
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var result = String(reader.result);
+      done({ name: file.name, type: type, data: result.slice(result.indexOf(',') + 1) });
+    };
+    reader.onerror = function () { fail(new Error('The receipt file could not be read.')); done(false); };
+    reader.readAsDataURL(file);
+  }
+
+  function setupForm() {
+    form.elements.category.innerHTML = options(opts.categories);
+    form.elements.budget_line.innerHTML = options(opts.budgetLines.map(function (b) {
+      return { value: b.name, label: b.name + ' (' + b.currency + ')' };
+    }));
+    form.elements.date.value = opts.today;
+    form.elements.date.max = opts.today;
+    document.getElementById('fn-maxmb').textContent = opts.maxReceiptMb;
+    if (opts.directions.length > 1) {
+      document.getElementById('fn-direction-wrap').style.display = 'grid';
+      form.elements.direction.innerHTML = options(opts.directions);
+      form.elements.direction.value = 'Expenditure';
+    }
+    syncCurrency();
+    form.elements.budget_line.addEventListener('change', syncCurrency);
+
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var btn = document.getElementById('fn-submit');
+      var data = {};
+      Array.prototype.forEach.call(form.elements, function (el) {
+        if (el.name && el.type !== 'file') data[el.name] = el.value;
+      });
+      if (!data.direction) data.direction = 'Expenditure';
+      btn.disabled = true;
+      say('Saving…', true);
+      readReceipt(form.elements.receipt.files[0], function (receipt) {
+        if (receipt === false) { btn.disabled = false; return; }
+        data.receipt = receipt;
+        google.script.run
+          .withSuccessHandler(function (res) {
+            btn.disabled = false;
+            form.reset();
+            form.elements.date.value = opts.today;
+            syncCurrency();
+            say('Submitted ' + res.transaction_id + (res.status === 'Pending' ? '. It is waiting for approval.' : '.'), true);
+            reloadAll();
+          })
+          .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+          .financeSubmit(data);
+      });
+    });
+  }
+
+  // ---- Admin buttons (one delegated handler) ----
+  document.getElementById('fn-root').addEventListener('click', function (ev) {
+    var btn = ev.target.closest('button');
+    if (!btn) return;
+    if (btn.classList.contains('fn-approve') || btn.classList.contains('fn-reject')) {
+      var card = btn.closest('.card');
+      var decision = btn.classList.contains('fn-approve') ? 'Approve' : 'Reject';
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function (res) {
+          say(res.transaction_id + ' ' + res.status.toLowerCase() + '.' + (res.warning ? ' ' + res.warning : ''), !res.warning);
+          reloadAll();
+        })
+        .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+        .financeDecide(card.getAttribute('data-id'), decision, card.querySelector('.fn-note').value);
+    } else if (btn.classList.contains('fn-rev')) {
+      var reason = btn.parentNode.querySelector('.fn-rev-reason').value;
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function (res) {
+          say('Added reversal ' + res.transaction_id + ' for ' + res.reversal_of + '.', true);
+          reloadAll();
+        })
+        .withFailureHandler(function (e) { btn.disabled = false; fail(e); })
+        .financeReverse(btn.getAttribute('data-id'), reason);
+    }
+  });
+
+  function init(o) {
+    opts = o;
+    setupForm();
+    loadMine();
+    if (opts.canSeeAll) {
+      document.getElementById('fn-all-wrap').style.display = 'block';
+      document.getElementById('fn-dash-wrap').style.display = 'block';
+      document.getElementById('fn-f-status').innerHTML = options(['Pending', 'Approved', 'Rejected'], 'Any status');
+      document.getElementById('fn-f-budget_line').innerHTML = options(opts.budgetLines.map(function (b) { return b.name; }), 'Any budget line');
+      document.getElementById('fn-f-direction').innerHTML = options(['Expenditure', 'Income'], 'Income and expenditure');
+      ['status', 'budget_line', 'direction'].forEach(function (k) {
+        document.getElementById('fn-f-' + k).addEventListener('change', loadAll);
+      });
+      document.getElementById('fn-clear').addEventListener('click', function () {
+        ['status', 'budget_line', 'direction'].forEach(function (k) { document.getElementById('fn-f-' + k).value = ''; });
+        loadAll();
+      });
+      loadAll();
+      loadDash();
+    }
+    if (opts.isAdmin) {
+      document.getElementById('fn-queue-wrap').style.display = 'block';
+      var recalc = document.getElementById('fn-recalc');
+      recalc.style.display = 'inline-block';
+      recalc.addEventListener('click', function () {
+        recalc.disabled = true;
+        google.script.run
+          .withSuccessHandler(function (r) { recalc.disabled = false; say('Budget recalculated (' + r.lines + ' lines).', true); loadDash(); })
+          .withFailureHandler(function (e) { recalc.disabled = false; fail(e); })
+          .financeRecalculate();
+      });
+      loadQueue();
+    }
+  }
+
+  google.script.run.withSuccessHandler(init).withFailureHandler(fail).financeOptions();
+})();
+</script>

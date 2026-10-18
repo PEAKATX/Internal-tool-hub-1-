@@ -101,15 +101,19 @@ src/
   Tasks.gs          assign, update status, completion notes, overdue flag, emails
   Reports.gs        weekly report form, history (filed/missed), compliance, blockers, Friday reminder
   Attendance.gs     check in / check out with server timestamps, history, team view
+  Finance.gs        expenses, receipts to Drive, approval, budget recalculation, dashboard
   ui/Index.html     page shell, includes the module partials
   ui/StaffDirectory.html  staff directory UI
   ui/Tasks.html     my tasks, team/all-tasks board, assign form
   ui/Reports.html   report form, my history, team compliance and blockers
   ui/Attendance.html  check in/out card, my history, team attendance
+  ui/Finance.html   expense form, my expenses, approval queue, transactions, budget dashboard
+tests/
+  mock.js           in-memory Sheets/Drive/Mail stand-in (no Google account needed)
+  finance.test.js   server-side Finance tests
 ```
 
-Feature modules (`Tasks.gs`, `Reports.gs`, `Attendance.gs`, `Finance.gs`,
-`Budget.gs`, `Analytics.gs`) get added alongside these as they're built.
+Feature modules (`Tasks.gs`, `Reports.gs`, `Attendance.gs`, `Analytics.gs`) get added alongside these as they're built.
 Each should wrap its functions in an object (e.g. `const Tasks = { create() {...} }`)
 since Apps Script shares one global namespace across all files.
 
@@ -159,7 +163,46 @@ See the comment block at the top of `Schema.gs`:
 - The blockers list uses each person's most recent report only, and ignores
   answers such as "None" or "N/A".
 
+## Finance module
+
+Rules (all enforced server-side in `Finance.gs`):
+- Access levels are now Staff, Lead, **Finance**, Admin. Finance and Admin see
+  all transactions and the budget dashboard. Anyone else sees only their own
+  submissions. In prod, add one `access_level` = `Finance` row to Config by hand
+  (the seed refuses to run in prod).
+- Only **approved expenditure** counts as spent. Income never counts as spent;
+  it is shown as "funds received" per grant. Finance/Admin income is
+  auto-approved and needs no receipt.
+- Burn rate = spent / months elapsed (calendar months from `period_start`
+  through the current month, inclusive). "Remaining / month" = remaining /
+  months remaining. Period dates come from `period_start`/`period_end`, or fall
+  back to a four-digit year in `period`.
+- Only an Admin approves, rejects or reverses. An Admin cannot decide their own
+  submission (`Finance.BLOCK_SELF_APPROVAL`), so this needs a second Admin.
+- Nothing is edited or deleted: a cancellation is a new approved negative entry
+  with `reversal_of` set to the original.
+- One currency (NGN or USD) per budget line; the form follows the line.
+- Money is summed in cents. Receipts: PDF/PNG/JPEG, max 5 MB, checked by content.
+- Approve/reject emails the submitter (redirected to the developer in dev).
+
+Creating a budget line: add a row to the Budget tab (`budget_id`, `budget_line`,
+`grant_source`, `period` or `period_start`/`period_end`, `allocated`, `currency`,
+`active`), then press "Recalculate budget" on the Expenses page.
+
+Importing legacy rows: paste them into Finance, then run `normaliseFinanceRows()`
+once. Rows with an approver become Approved; rows without become Pending.
+Budget lines with no transactions keep a blank currency and are reported.
+
+Schema changes: run `setupSheets()` after pulling (adds Finance/Budget columns).
+
+Open decisions to confirm with the analysts: the Finance access level, the
+`status` column, one currency per budget line, the months-elapsed convention,
+legacy unapproved rows importing as Pending, income handling, and self-approval
+needing a second Admin.
+
 ## Testing
+
+Server logic: `node tests/finance.test.js` (no dependencies).
 
 `docs/E2E-TEST-CHECKLIST.md` is the full end-to-end checklist: login,
 routing, every module, security, data integrity, and a prod smoke test.

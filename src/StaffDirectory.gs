@@ -5,7 +5,7 @@
  * Access rules, enforced here on the server:
  *   - Admin: sees every record (active and inactive), can add and deactivate.
  *   - Lead:  sees active records for themself and their direct reports.
- *   - Staff: sees only their own record.
+ *   - Staff and Finance: see only their own record.
  * Records are never deleted, only set to status = 'Inactive' (Section 8).
  *
  * google.script.run can only call top-level functions, so the logic lives
@@ -15,7 +15,7 @@
 const StaffDirectory = {
 
   // Used only when the Config tab has no rows for that category yet.
-  DEFAULT_ACCESS_LEVELS: ['Staff', 'Lead', 'Admin'],
+  DEFAULT_ACCESS_LEVELS: ['Staff', 'Lead', 'Finance', 'Admin'],
   DEFAULT_EMPLOYMENT_TYPES: ['Full time', 'Part time', 'Volunteer', 'Intern'],
 
   /** Dropdown values for the add form. Read from the Config tab. */

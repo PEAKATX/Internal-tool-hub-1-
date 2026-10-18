@@ -22,7 +22,73 @@ function seedDummyData() {
   seedTasks_(ss);
   seedReports_(ss);
   seedAttendance_(ss);
+  seedBudget_(ss);
+  seedFinance_(ss);
+  Finance.recalcBudget_();
   Logger.log('Dummy data seeded.');
+}
+
+/**
+ * Seven budget lines from the data analysts' Spend Against Budget workbook
+ * (all USD, calendar year 2026). Skipped if the Budget tab already has data.
+ */
+function seedBudget_(ss) {
+  const sheet = ss.getSheetByName('Budget');
+  if (sheet.getLastRow() > 1) return;
+  const lines = [
+    ['Payroll', 'Sample Funder 1', 120000], ['Stipends', 'Sample Funder 1', 40000],
+    ['Programme delivery', 'Sample Funder 1', 60000], ['Equipment', 'Sample Funder 2', 40000],
+    ['Travel', 'Sample Funder 1', 20000], ['Software', 'Sample Funder 2', 40000],
+    ['Other', 'Sample Funder 2', 20000]
+  ];
+  lines.forEach(function (l, i) {
+    writeRowSafe_(sheet, 2 + i, SCHEMA.Budget, {
+      budget_id: 'BUD-' + String(i + 1).padStart(3, '0'), budget_line: l[0], grant_source: l[1],
+      period: '2026', allocated: l[2], spent: 0, remaining: l[2], burn_rate: 0, active: true,
+      currency: 'USD', period_start: '2026-01-01', period_end: '2026-12-31'
+    });
+  });
+}
+
+/**
+ * The 14 sample transactions from the same workbook. Rows with an approver
+ * are Approved, the rest Pending. Sam submitted all of them, Ada approved.
+ * Skipped if the Finance tab already has data.
+ */
+function seedFinance_(ss) {
+  const sheet = ss.getSheetByName('Finance');
+  if (sheet.getLastRow() > 1) return;
+  const sam = 'staff@example.org', ada = 'admin@example.org';
+  const grants = { Payroll: 'Sample Funder 1', Stipends: 'Sample Funder 1', 'Programme delivery': 'Sample Funder 1',
+    Travel: 'Sample Funder 1', Equipment: 'Sample Funder 2', Software: 'Sample Funder 2', Other: 'Sample Funder 2' };
+  // id, date, direction, line, description, amount, approved?
+  const rows = [
+    ['T0001', '2026-01-28', 'Expenditure', 'Software', 'SaaS', 4000, true],
+    ['T0002', '2026-01-29', 'Expenditure', 'Equipment', 'Laptop', 6000, false],
+    ['T0003', '2026-02-11', 'Expenditure', 'Software', 'Subscription', 4000, false],
+    ['T0004', '2026-02-22', 'Expenditure', 'Stipends', 'Staff Stipends', 5000, true],
+    ['T0005', '2026-02-28', 'Expenditure', 'Stipends', 'Staff Stipends', 5000, false],
+    ['T0006', '2026-03-09', 'Expenditure', 'Travel', 'Flight', 4000, true],
+    ['T0007', '2026-03-11', 'Expenditure', 'Travel', 'Hotel', 2000, false],
+    ['T0008', '2026-03-12', 'Expenditure', 'Travel', 'Taxi and meal', 1000, true],
+    ['T0009', '2026-04-11', 'Expenditure', 'Equipment', 'Monitor', 4000, true],
+    ['T0010', '2026-04-18', 'Expenditure', 'Equipment', 'Projector', 4000, false],
+    ['T0011', '2026-05-02', 'Income', 'Other', 'Funding Received', 20000, false],
+    ['T0012', '2026-05-08', 'Income', 'Other', 'Funding Received', 10000, false],
+    ['T0013', '2026-06-12', 'Expenditure', 'Travel', 'Flight', 2000, true],
+    ['T0014', '2026-06-15', 'Expenditure', 'Travel', 'Hotel', 1000, false]
+  ];
+  rows.forEach(function (r, i) {
+    writeRowSafe_(sheet, 2 + i, SCHEMA.Finance, {
+      transaction_id: r[0], date: r[1], direction: r[2], category: r[3], description: r[4],
+      amount: r[5], currency: 'USD', budget_line: r[3], grant_source: grants[r[3]],
+      submitted_by: sam, approved_by: r[6] ? ada : '',
+      receipt_link: 'https://drive.example.org/receipts/' + r[0], active: true,
+      status: r[6] ? 'Approved' : 'Pending', decision_note: '',
+      decided_by: r[6] ? ada : '', decided_at: r[6] ? r[1] + ' 12:00' : '',
+      reversal_of: '', submitted_at: r[1] + ' 09:00'
+    });
+  });
 }
 
 /**
@@ -177,6 +243,7 @@ function seedConfig_(ss) {
     ['finance_category', 'Other'],
     ['access_level', 'Staff'],
     ['access_level', 'Lead'],
+    ['access_level', 'Finance'],
     ['access_level', 'Admin'],
     ['employment_type', 'Full time'],
     ['employment_type', 'Part time'],
@@ -193,6 +260,13 @@ function seedConfig_(ss) {
   ];
 
   const rows = all.filter(function (r) { return !existingCategories[r[0]]; });
+
+  // Values added to an existing category later. Only these are ever appended.
+  const existingPairs = {};
+  sheet.getDataRange().getValues().slice(1).forEach(function (r) { existingPairs[r[0] + '|' + r[1]] = true; });
+  [['access_level', 'Finance']].forEach(function (pair) {
+    if (existingCategories[pair[0]] && !existingPairs[pair.join('|')]) rows.push(pair);
+  });
   if (!rows.length) return;
   // Write below the last row that has content (getLastRow ignores blanks).
   sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 2).setValues(rows);
