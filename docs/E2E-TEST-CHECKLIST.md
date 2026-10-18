@@ -119,6 +119,35 @@ Lead, manages Sam), `staff@example.org` (Sam, Staff).
       they act; change the date picker to yesterday and check the statuses
 - [ ] A future date is rejected
 
+## 5b. Finance
+
+Sign in (via `EMAIL_OVERRIDE`) as `staff@example.org` (Sam):
+- [ ] Expenses page shows "My expenses" and the form; no queue, no transactions, no dashboard
+- [ ] Submit with no receipt: refused with a clear message
+- [ ] Submit a PDF/PNG receipt: "waiting for approval", row shows Pending, file appears in the receipts Drive folder
+- [ ] Upload a `.html` file renamed to `.pdf`: refused
+- [ ] Description `=1+1`: shown literally in the app and in the Sheet (formula bar shows no formula)
+- [ ] Currency follows the chosen budget line and cannot be edited
+
+As `admin@example.org` (Ada):
+- [ ] Queue lists Sam's pending items; your own submission shows a note and no buttons
+- [ ] Reject without a note is refused; reject with a note removes it and Sam gets a `[DEV]` email
+- [ ] Approve: the Budget tab's spent/remaining/burn_rate change and Sam gets a `[DEV]` email
+- [ ] Reverse an approved expense with a reason: a negative approved row appears, the original shows Reversed, spent drops
+- [ ] Dashboard: only approved expenditure counted; pending shown separately; income appears as funds received
+- [ ] "Recalculate budget" works
+
+As a Finance-level person (add one in Staff directory, access level Finance):
+- [ ] Sees all transactions and the dashboard; no queue, no Reverse or Recalculate
+- [ ] Submits Income with no receipt: approved at once, counted in funds received
+
+As Lead (`lead@example.org`): [ ] sees only their own expenses
+
+Console checks, as Staff:
+- [ ] `google.script.run.financeTransactions({})` fails
+- [ ] `google.script.run.financeDashboard()` fails
+- [ ] `google.script.run.financeDecide('T0003','Approve','')` fails (Admin only)
+
 ## 6. Security checks (the server must refuse, not just the UI)
 
 - [ ] As Staff, open the browser console on the page and run
@@ -155,4 +184,5 @@ Only after the dev checklist passes. In the **prod** project:
 - [ ] Deploy the web app, sign in with an org account: you see your own name and Admin
 - [ ] Run `installTriggers()` once. Check **Triggers** in the sidebar shows two:
       Friday reminders and Monday summaries
+- [ ] Add one `access_level` = `Finance` row to Config; add real Budget lines; submit, approve and check one expense end to end
 - [ ] Add one real staff member through the Staff directory and confirm they can sign in

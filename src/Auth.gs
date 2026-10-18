@@ -45,7 +45,7 @@ function currentUser_() {
         role: row[map.role - 1],
         department: row[map.department - 1],
         reportsTo: row[map.reports_to - 1],
-        accessLevel: row[map.access_level - 1], // 'Staff' | 'Lead' | 'Admin'
+        accessLevel: row[map.access_level - 1], // 'Staff' | 'Lead' | 'Finance' | 'Admin'
         employmentType: row[map.employment_type - 1]
       };
     }
@@ -67,6 +67,18 @@ function requireAdmin_() {
   return user;
 }
 
+/**
+ * Throws unless the caller is Finance or Admin. Finance records and the
+ * budget dashboard are visible only to these two access levels (Section 8).
+ */
+function requireFinanceOrAdmin_() {
+  const user = requireUser_();
+  if (user.accessLevel !== 'Finance' && user.accessLevel !== 'Admin') {
+    throw new Error('Access denied: Finance or Admin only.');
+  }
+  return user;
+}
+
 /** Throws unless the caller is Lead or Admin. */
 function requireLeadOrAdmin_() {
   const user = requireUser_();
@@ -79,11 +91,12 @@ function requireLeadOrAdmin_() {
 /**
  * Returns the list of staff emails a Lead can see: themself plus anyone
  * whose reports_to matches their email. Admins should bypass this and see
- * everyone; Staff should be restricted to just their own email.
+ * everyone. Every other level (Staff, Finance) sees only their own email:
+ * only a Lead gets a team.
  */
 function visibleStaffEmails_(user) {
   if (user.accessLevel === 'Admin') return null; // null == no filter, sees all
-  if (user.accessLevel === 'Staff') return [user.email];
+  if (user.accessLevel !== 'Lead') return [user.email];
 
   const sheet = getDb_().getSheetByName('Staff');
   const rows = sheet.getDataRange().getValues();

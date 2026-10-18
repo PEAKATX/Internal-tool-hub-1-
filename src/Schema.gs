@@ -17,6 +17,8 @@
  *   3. "Never hard-deleted" (Section 8, Auditability) only has a `status`
  *      column on Staff. Added `active` to every other table below so
  *      records can be marked inactive instead of deleted. Confirm.
+ *   4. Finance and Budget gained the columns described next to them below
+ *      (status, reversal_of, currency, period dates and so on). Confirm.
  */
 
 const SCHEMA = {
@@ -44,11 +46,26 @@ const SCHEMA = {
   Finance: [
     'transaction_id', 'date', 'direction', 'category', 'description',
     'amount', 'currency', 'budget_line', 'grant_source', 'submitted_by',
-    'approved_by', 'receipt_link', 'active'
+    'approved_by', 'receipt_link', 'active',
+    // Added for the Finance module (not in Section 5.5). All are appended
+    // after the original columns so existing column letters never move.
+    // status: Pending | Approved | Rejected (a rejection cannot be recorded
+    // with approved_by alone). decided_by/decided_at/decision_note: who
+    // approved or rejected, when, and why. reversal_of: the transaction a
+    // reversing entry cancels (approved transactions are never edited or
+    // deleted; a cancellation is a new negative entry). submitted_at: the
+    // timestamp Section 8 (Auditability) asks for.
+    'status', 'decision_note', 'decided_by', 'decided_at', 'reversal_of',
+    'submitted_at'
   ],
   Budget: [
     'budget_id', 'budget_line', 'grant_source', 'period', 'allocated',
-    'spent', 'remaining', 'burn_rate', 'active'
+    'spent', 'remaining', 'burn_rate', 'active',
+    // Added for the Finance module (not in Section 5.6). currency: one
+    // currency per budget line (NGN or USD). period_start / period_end:
+    // yyyy-MM-dd, so months elapsed and remaining can be calculated. If both
+    // are blank and `period` is a four-digit year, that calendar year is used.
+    'currency', 'period_start', 'period_end'
   ],
   Programmes: [
     'programme_id', 'programme', 'cohort', 'lead', 'status',
