@@ -8,8 +8,8 @@
  *     in Finance is visible to them, and they never see budget amounts.
  *   - Finance and Admin see every transaction and the budget dashboard.
  *     Finance and Admin can also record Income, which needs no approval.
- *   - Only an Admin approves, rejects or reverses. An Admin cannot decide
- *     their own submission, so a second Admin is needed for those.
+ *   - Finance and Admin can approve or reject. Only an Admin reverses. Nobody
+ *     can decide their own submission, so a second approver is needed.
  *   - Only Approved Expenditure counts towards `spent`. Income never does.
  *   - Approved transactions are never edited or deleted. A cancellation is a
  *     new, approved entry with a negative amount and `reversal_of` set.
@@ -22,7 +22,7 @@
 
 const Finance = {
 
-  CURRENCIES: ['NGN', 'USD'],
+  CURRENCIES: ['NGN', 'USD', 'GBP', 'EUR'],
   DIRECTIONS: ['Income', 'Expenditure'],
   PENDING: 'Pending',
   APPROVED: 'Approved',
@@ -197,7 +197,7 @@ const Finance = {
         else if (t.status === Finance.PENDING) pending += Finance.cents_(t.amount);
       });
       if (!b.currency) warnings.push('No currency is set for this budget line.');
-      else if (Finance.CURRENCIES.indexOf(b.currency) === -1) warnings.push('Currency must be NGN or USD.');
+      else if (Finance.CURRENCIES.indexOf(b.currency) === -1) warnings.push('Currency must be one of ' + Finance.CURRENCIES.join(', ') + '.');
       if (mismatched) warnings.push(mismatched + ' transaction(s) are in a different currency and are not counted.');
 
       const period = Finance.periodDates_(b);
@@ -293,6 +293,7 @@ const Finance = {
       directions: Finance.canSeeAll_(user) ? Finance.DIRECTIONS : ['Expenditure'],
       canSeeAll: Finance.canSeeAll_(user),
       isAdmin: user.accessLevel === 'Admin',
+      canApprove: Finance.canSeeAll_(user),
       maxReceiptMb: Finance.MAX_RECEIPT_BYTES / (1024 * 1024),
       today: todayIso_()
     };
@@ -368,7 +369,7 @@ const Finance = {
     }
 
     const currency = clean(data.currency).toUpperCase();
-    if (Finance.CURRENCIES.indexOf(currency) === -1) throw new Error('Choose NGN or USD.');
+    if (Finance.CURRENCIES.indexOf(currency) === -1) throw new Error('Choose one of ' + Finance.CURRENCIES.join(', ') + '.');
 
     const lineName = clean(data.budget_line);
     const budget = Finance.readBudgets_().filter(function (b) {
@@ -494,7 +495,7 @@ const Finance = {
   // ---- decisions ----
 
   decide: function (user, id, decision, note) {
-    if (user.accessLevel !== 'Admin') throw new Error('Access denied: Admin only.');
+    if (!Finance.canSeeAll_(user)) throw new Error('Access denied: Finance or Admin only.');
     id = Finance.clean_(id);
     decision = Finance.clean_(decision);
     note = Finance.clean_(note);
@@ -507,7 +508,7 @@ const Finance = {
       if (!t) throw new Error('No transaction found with id ' + id + '.');
       if (t.status !== Finance.PENDING) throw new Error(id + ' has already been ' + t.status.toLowerCase() + '.');
       if (Finance.BLOCK_SELF_APPROVAL && t.submitted_by === user.email) {
-        throw new Error('You cannot approve or reject your own submission. Ask another Admin.');
+        throw new Error('You cannot approve or reject your own submission. Ask another approver (Finance or Admin).');
       }
       if (decision === 'Approve') {
         const b = Finance.readBudgets_().filter(function (x) { return x.active && x.budget_line === t.budget_line; })[0];
@@ -651,7 +652,7 @@ const Finance = {
         if (!wantDir) summary.problems.push(id + ': direction "' + dir + '" must be Income or Expenditure.');
         else if (text('direction') !== wantDir) change('direction', wantDir);
         const cur = Finance.clean_(get('currency')).toUpperCase();
-        if (Finance.CURRENCIES.indexOf(cur) === -1) summary.problems.push(id + ': currency "' + cur + '" must be NGN or USD.');
+        if (Finance.CURRENCIES.indexOf(cur) === -1) summary.problems.push(id + ': currency "' + cur + '" must be one of ' + Finance.CURRENCIES.join(', ') + '.');
         else if (text('currency') !== cur) change('currency', cur);
 
         // amount: numeric text becomes a number
@@ -743,7 +744,7 @@ function financeDashboard() {
 }
 
 function financeDecide(id, decision, note) {
-  return Finance.decide(requireAdmin_(), id, decision, note);
+  return Finance.decide(requireFinanceOrAdmin_(), id, decision, note);
 }
 
 function financeReverse(id, reason) {

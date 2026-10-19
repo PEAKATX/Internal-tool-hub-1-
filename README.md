@@ -167,7 +167,7 @@ See the comment block at the top of `Schema.gs`:
 
 Rules (all enforced server-side in `Finance.gs`):
 - Access levels are now Staff, Lead, **Finance**, Admin. Finance and Admin see
-  all transactions and the budget dashboard. Anyone else sees only their own
+  all transactions and the budget dashboard, and both can approve or reject. Anyone else sees only their own
   submissions. In prod, add one `access_level` = `Finance` row to Config by hand
   (the seed refuses to run in prod).
 - Only **approved expenditure** counts as spent. Income never counts as spent;
@@ -177,11 +177,15 @@ Rules (all enforced server-side in `Finance.gs`):
   through the current month, inclusive). "Remaining / month" = remaining /
   months remaining. Period dates come from `period_start`/`period_end`, or fall
   back to a four-digit year in `period`.
-- Only an Admin approves, rejects or reverses. An Admin cannot decide their own
-  submission (`Finance.BLOCK_SELF_APPROVAL`), so this needs a second Admin.
+- Finance and Admin approve or reject. Only an Admin reverses, recalculates or
+  normalises. Nobody can decide their own submission
+  (`Finance.BLOCK_SELF_APPROVAL`), so until a Finance person is onboarded this
+  needs a second Admin.
 - Nothing is edited or deleted: a cancellation is a new approved negative entry
   with `reversal_of` set to the original.
-- One currency (NGN or USD) per budget line; the form follows the line.
+- One currency per budget line (NGN, USD, GBP or EUR); the form follows the line.
+  Grants are totalled per currency, never added across currencies. To add a
+  currency, add it to `Finance.CURRENCIES` in `Finance.gs`.
 - Money is summed in cents. Receipts: PDF/PNG/JPEG, max 5 MB, checked by content.
 - Approve/reject emails the submitter (redirected to the developer in dev).
 
@@ -195,10 +199,12 @@ Budget lines with no transactions keep a blank currency and are reported.
 
 Schema changes: run `setupSheets()` after pulling (adds Finance/Budget columns).
 
-Open decisions to confirm with the analysts: the Finance access level, the
-`status` column, one currency per budget line, the months-elapsed convention,
-legacy unapproved rows importing as Pending, income handling, and self-approval
-needing a second Admin.
+Decisions confirmed by the analysts (19 Oct): Finance access level, the
+`status` column, months-elapsed burn rate, legacy unapproved rows import as
+Pending, income handling, over-allocation warns without blocking, and
+cancellation by negative entry. Changes they asked for: GBP and EUR added,
+and Finance staff may approve. They have real grant period dates, so fill
+`period_start` and `period_end` on each Budget row.
 
 ## Testing
 

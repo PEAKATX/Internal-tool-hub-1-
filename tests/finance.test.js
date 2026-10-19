@@ -102,14 +102,59 @@ test('only Finance and Admin see transactions and the dashboard', () => {
   throwsMsg(() => call(env, 'nobody@example.org', 'financeOptions'), /no active Staff record/);
 });
 
-test('only an Admin decides, reverses, recalculates or normalises', () => {
+test('only Finance or Admin decide; only an Admin reverses, recalculates or normalises', () => {
   const env = setup();
+  [LEO, SAM].forEach(who => throwsMsg(() => call(env, who, 'financeDecide', 'T0003', 'Approve', ''), /Finance or Admin only/));
   ['fin@example.org', LEO, SAM].forEach(who => {
-    throwsMsg(() => call(env, who, 'financeDecide', 'T0002', 'Approve', ''), /Admin only/);
     throwsMsg(() => call(env, who, 'financeReverse', 'T0001', 'x'), /Admin only/);
     throwsMsg(() => call(env, who, 'financeRecalculate'), /Admin only/);
     throwsMsg(() => call(env, who, 'normaliseFinanceRows'), /Admin only/);
   });
+});
+
+test('a Finance user can approve and reject, but not their own submission', () => {
+  const env = setup();
+  const fin = 'fin@example.org';
+  assert.equal(env.plain(call(env, fin, 'financeOptions')).canApprove, true);
+  assert.equal(env.plain(call(env, fin, 'financeOptions')).isAdmin, false);
+  assert.equal(env.plain(call(env, SAM, 'financeOptions')).canApprove, false);
+  assert.equal(env.plain(call(env, fin, 'financeDecide', 'T0003', 'Approve', '')).status, 'Approved');
+  assert.equal(env.plain(call(env, fin, 'financeDecide', 'T0005', 'Reject', 'No receipt detail')).status, 'Rejected');
+  const row = env.rows('Finance').filter(r => r.transaction_id === 'T0003')[0];
+  assert.deepEqual([row.decided_by, row.approved_by], [fin, fin]);
+  assert.equal(line(env, 'Software').spent, 8000);
+  call(env, fin, 'financeSubmit', good({ description: 'Fin lunch' }));
+  throwsMsg(() => call(env, fin, 'financeDecide', 'T0015', 'Approve', ''), /your own submission/);
+  call(env, ADA, 'financeDecide', 'T0015', 'Approve', '');                    // an Admin can decide the Finance user's
+  assert.equal(env.rows('Finance').filter(r => r.transaction_id === 'T0015')[0].status, 'Approved');
+});
+
+test('GBP and EUR budget lines work, one currency per line, never added together', () => {
+  const env = setup();
+  const sh = env.sheet('Budget');
+  const heads = env.get('SCHEMA').Budget;
+  [['BUD-008', 'Grants UK', 'Sample Funder 3', 'GBP', 10000], ['BUD-009', 'Grants EU', 'Sample Funder 3', 'EUR', 8000]].forEach((l, i) => {
+    const rec = { budget_id: l[0], budget_line: l[1], grant_source: l[2], period: '2026', allocated: l[4], spent: 0,
+      remaining: l[4], burn_rate: 0, active: true, currency: l[3], period_start: '2026-01-01', period_end: '2026-12-31' };
+    sh.appendRow(heads.map(h => (rec[h] === undefined ? '' : rec[h])));
+  });
+  const opts = env.plain(call(env, SAM, 'financeOptions'));
+  assert.deepEqual(opts.currencies, ['NGN', 'USD', 'GBP', 'EUR']);
+  assert.deepEqual(opts.budgetLines.filter(b => /^Grants/.test(b.name)), [
+    { name: 'Grants UK', currency: 'GBP' }, { name: 'Grants EU', currency: 'EUR' }]);
+  call(env, SAM, 'financeSubmit', good({ budget_line: 'Grants UK', currency: 'GBP', amount: '250.25' }));
+  call(env, SAM, 'financeSubmit', good({ budget_line: 'Grants EU', currency: 'EUR', amount: '100' }));
+  throwsMsg(() => call(env, SAM, 'financeSubmit', good({ budget_line: 'Grants UK', currency: 'USD' })), /is in GBP/);
+  throwsMsg(() => call(env, SAM, 'financeSubmit', good({ budget_line: 'Grants EU', currency: 'GBP' })), /is in EUR/);
+  throwsMsg(() => call(env, SAM, 'financeSubmit', good({ currency: 'JPY' })), /Choose one of NGN, USD, GBP, EUR/);
+  call(env, ADA, 'financeDecide', 'T0015', 'Approve', '');
+  call(env, ADA, 'financeDecide', 'T0016', 'Approve', '');
+  const d = env.plain(call(env, ADA, 'financeDashboard'));
+  const uk = d.lines.filter(l => l.budget_line === 'Grants UK')[0], eu = d.lines.filter(l => l.budget_line === 'Grants EU')[0];
+  assert.deepEqual([uk.currency, uk.spent, uk.remaining], ['GBP', 250.25, 9749.75]);
+  assert.deepEqual([eu.currency, eu.spent, eu.remaining], ['EUR', 100, 7900]);
+  const g = d.grants.filter(x => x.grant_source === 'Sample Funder 3');
+  assert.deepEqual(g.map(x => x.currency).sort(), ['EUR', 'GBP']);          // two rows, not one mixed total
 });
 
 test('the Finance level gets no team view and cannot assign tasks', () => {
@@ -157,7 +202,8 @@ test('submit rejects bad input', () => {
     [{ amount: '' }, /greater than zero/],
     [{ amount: '12.345' }, /2 decimal places/],
     [{ amount: '2000000000' }, /too large/],
-    [{ currency: 'EUR' }, /NGN or USD/],
+    [{ currency: 'JPY' }, /Choose one of NGN, USD, GBP, EUR/],
+    [{ currency: 'EUR' }, /is in USD/],
     [{ currency: 'NGN' }, /is in USD/],
     [{ budget_line: 'Nope' }, /budget line from the list/],
     [{ receipt: null }, /Attach the receipt/],

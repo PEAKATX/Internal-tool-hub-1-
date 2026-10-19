@@ -78,7 +78,7 @@
 (function () {
   // window.ATX_USER is set by Index.html before this partial is included.
   var ME = window.ATX_USER || {};
-  var opts = { budgetLines: [], categories: [], currencies: [], directions: [], canSeeAll: false, isAdmin: false, maxReceiptMb: 5, today: '' };
+  var opts = { budgetLines: [], categories: [], currencies: [], directions: [], canSeeAll: false, isAdmin: false, canApprove: false, maxReceiptMb: 5, today: '' };
   var msg = document.getElementById('fn-msg');
 
   function esc(s) {
@@ -131,7 +131,7 @@
     google.script.run.withSuccessHandler(renderMine).withFailureHandler(fail).financeMine();
   }
 
-  // ---- approval queue (Admin) ----
+  // ---- approval queue (Finance and Admin) ----
   function renderQueue(res) {
     var el = document.getElementById('fn-queue');
     var rows = res.rows.slice().reverse(); // oldest first
@@ -144,7 +144,7 @@
         '<div class="meta">' + esc(r.submitted_by_name) + ' · ' + esc(r.date) + ' · ' + esc(r.direction) + ' · ' +
         esc(r.category) + ' · ' + esc(r.budget_line) + ' · <strong>' + money(r.amount) + ' ' + esc(r.currency) +
         '</strong> ' + receiptLink(r) + '</div>' +
-        (own ? '<div class="warn">Your own submission: another Admin has to decide it.</div>' :
+        (own ? '<div class="warn">Your own submission: another Finance or Admin user has to decide it.</div>' :
           '<div class="row"><input class="fn-note" placeholder="Note (required to reject)" maxlength="300">' +
           '<button class="fn-approve">Approve</button><button class="fn-reject">Reject</button></div>') +
         '</div>';
@@ -222,7 +222,7 @@
   function reloadAll() {
     loadMine();
     if (opts.canSeeAll) { loadAll(); loadDash(); }
-    if (opts.isAdmin) loadQueue();
+    if (opts.canApprove) loadQueue();
   }
 
   // ---- the submit form ----
@@ -345,8 +345,11 @@
       loadAll();
       loadDash();
     }
-    if (opts.isAdmin) {
+    if (opts.canApprove) {
       document.getElementById('fn-queue-wrap').style.display = 'block';
+      loadQueue();
+    }
+    if (opts.isAdmin) {
       var recalc = document.getElementById('fn-recalc');
       recalc.style.display = 'inline-block';
       recalc.addEventListener('click', function () {
@@ -356,7 +359,6 @@
           .withFailureHandler(function (e) { recalc.disabled = false; fail(e); })
           .financeRecalculate();
       });
-      loadQueue();
     }
   }
 
