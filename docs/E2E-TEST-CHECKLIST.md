@@ -127,7 +127,7 @@ Sign in (via `EMAIL_OVERRIDE`) as `staff@example.org` (Sam):
 - [ ] Submit a PDF/PNG receipt: "waiting for approval", row shows Pending, file appears in the receipts Drive folder
 - [ ] Upload a `.html` file renamed to `.pdf`: refused
 - [ ] Description `=1+1`: shown literally in the app and in the Sheet (formula bar shows no formula)
-- [ ] Currency follows the chosen budget line and cannot be edited
+- [ ] Currency follows the chosen budget line and cannot be edited (NGN, USD, GBP and EUR lines all work: add a Budget row with `currency` GBP, then submit against it)
 
 As `admin@example.org` (Ada):
 - [ ] Queue lists Sam's pending items; your own submission shows a note and no buttons
@@ -138,7 +138,7 @@ As `admin@example.org` (Ada):
 - [ ] "Recalculate budget" works
 
 As a Finance-level person (add one in Staff directory, access level Finance):
-- [ ] Sees all transactions and the dashboard; no queue, no Reverse or Recalculate
+- [ ] Sees all transactions, the dashboard and the approval queue; can approve and reject someone else's expense, but not their own; no Reverse or Recalculate
 - [ ] Submits Income with no receipt: approved at once, counted in funds received
 
 As Lead (`lead@example.org`): [ ] sees only their own expenses
@@ -146,7 +146,7 @@ As Lead (`lead@example.org`): [ ] sees only their own expenses
 Console checks, as Staff:
 - [ ] `google.script.run.financeTransactions({})` fails
 - [ ] `google.script.run.financeDashboard()` fails
-- [ ] `google.script.run.financeDecide('T0003','Approve','')` fails (Admin only)
+- [ ] `google.script.run.financeDecide('T0003','Approve','')` fails (Finance or Admin only)
 
 ## 6. Security checks (the server must refuse, not just the UI)
 
